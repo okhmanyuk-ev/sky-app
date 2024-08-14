@@ -1,7 +1,75 @@
 #include "application.h"
 #include <sol/sol.hpp>
+#ifndef PLATFORM_EMSCRIPTEN
+#include <curl/curl.h>
+#else
+#include <emscripten.h>
+#include <emscripten/fetch.h>
+#endif
 
 using namespace skyapp;
+
+using DownloadCallback = std::function<void(void*, size_t)>;
+
+static void DownloadFileToMemory(const std::string& url, DownloadCallback callback)
+{
+	sky::Log("fetching {}", url);
+
+#ifndef PLATFORM_EMSCRIPTEN
+	auto curl = curl_easy_init();
+
+	if (!curl)
+		throw std::runtime_error("cannot initialize curl");
+
+	auto write_func = +[](char* memory, size_t size, size_t nmemb, void* userdata) -> size_t {
+		auto real_size = size * nmemb;
+		auto callback = *(DownloadCallback*)userdata;
+		sky::Log("fetched {} bytes", real_size);
+		callback((void*)memory, real_size);
+		return real_size;
+	};
+
+	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_func);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &callback);
+
+	auto res = curl_easy_perform(curl);
+	curl_easy_cleanup(curl);
+
+	if (res != CURLE_OK)
+		throw std::runtime_error(std::string("curl_easy_perform() failed: ") + curl_easy_strerror(res));
+#else
+	auto onsuccess = [](emscripten_fetch_t* fetch) {
+		auto memory = fetch->data;
+		auto size = fetch->numBytes;
+		auto callback = (DownloadCallback*)fetch->userData;
+		(*callback)((void*)memory, size);
+		delete callback;
+		emscripten_fetch_close(fetch);
+	};
+
+	auto onerror = [](emscripten_fetch_t* fetch) {
+		sky::Log("fetch failed");
+		auto callback = (DownloadCallback*)fetch->userData;
+		delete callback;
+		emscripten_fetch_close(fetch);
+	};
+
+	auto onprogress = [](emscripten_fetch_t* fetch) {
+		sky::Log("fetch progress {} of {}", fetch->dataOffset, fetch->totalBytes);
+	};
+
+	emscripten_fetch_attr_t attr;
+	emscripten_fetch_attr_init(&attr);
+	strcpy(attr.requestMethod, "GET");
+	attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+	attr.onsuccess = onsuccess;
+	attr.onerror = onerror;
+	attr.onprogress = onprogress;
+	attr.userData = new DownloadCallback(callback);
+	emscripten_fetch(&attr, url.c_str());
+#endif
+}
 
 static sol::state gSolState;
 static std::string gLuaCode;
@@ -108,13 +176,17 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 	gLuaCode =
 R"(function Frame()
 	Gfx.Clear(0.125, 0.125, 0.125, 1.0);
-	Gfx.Begin(Gfx.Triangles);
-	Gfx.Vertex(0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 1.0);
-	Gfx.Vertex(-0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0);
-	Gfx.Vertex(0.0, 0.5, 0.0, 0.0, 1.0, 0.0, 1.0);
-	Gfx.End();
 end)";
 	ExecuteLuaCode();
+
+	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
+		auto url = CON_ARG(0);
+		DownloadFileToMemory(url, [](void* memory, size_t size) {
+			gLuaCode = std::string((char*)memory, size);
+			sky::Log(gLuaCode);
+			ExecuteLuaCode();
+		});
+	});
 }
 
 Application::~Application()

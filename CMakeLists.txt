@@ -69,6 +69,18 @@ set_property(TARGET lua PROPERTY FOLDER ${LIBS_FOLDER})
 
 target_include_directories(${PROJECT_NAME} PUBLIC lib/sol)
 
+# curl
+
+if (NOT EMSCRIPTEN)
+	set(BUILD_CURL_EXE OFF)
+	set(BUILD_SHARED_LIBS OFF)
+	set(CURL_DISABLE_INSTALL ON)
+	set(SHARE_LIB_OBJECT OFF)
+	add_subdirectory(lib/curl)
+	target_link_libraries(${PROJECT_NAME} CURL::libcurl)
+	set_property(TARGET libcurl_static PROPERTY FOLDER ${LIBS_FOLDER})
+endif()
+
 # sky
 
 add_subdirectory(sky)
