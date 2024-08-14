@@ -6,6 +6,8 @@ set(PRODUCT_NAME "${PROJECT_NAME}")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(LIBS_FOLDER "libs")
+
 # main
 
 if(BUILD_DEVELOPER)
@@ -50,6 +52,22 @@ elseif(EMSCRIPTEN)
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC src)
+
+# lua
+
+file(GLOB LUA_SRC
+	lib/lua/src/*.c
+	lib/lua/src/*.h
+)
+
+target_include_directories(${PROJECT_NAME} PUBLIC lib/lua/src)
+add_library(lua STATIC ${LUA_SRC})
+target_link_libraries(${PROJECT_NAME} lua)
+set_property(TARGET lua PROPERTY FOLDER ${LIBS_FOLDER})
+
+# sol
+
+target_include_directories(${PROJECT_NAME} PUBLIC lib/sol)
 
 # sky
 
