@@ -75,7 +75,7 @@ static sol::state gSolState;
 static std::string gLuaCode;
 static skygfx::utils::Scratch gScratch;
 
-static void HandleError(const auto& res)
+static void HandleError(const sol::protected_function_result& res)
 {
 	std::string error_type = "UNKNOWN ERROR";
 
@@ -84,7 +84,7 @@ static void HandleError(const auto& res)
 	else if (res.status() == sol::call_status::runtime)
 		error_type = "RUNTIME ERROR";
 
-	auto msg = std::string(res.template get<sol::error>().what());
+	auto msg = std::string(res.get<sol::error>().what());
 
 	sky::Log(Console::Color::Red, "{}: {}", error_type, msg);
 }

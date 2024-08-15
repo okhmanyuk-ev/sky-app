@@ -17,21 +17,18 @@ endif()
 add_definitions(-DPROJECT_NAME="${PROJECT_NAME}")
 add_definitions(-DPRODUCT_NAME="${PRODUCT_NAME}")
 
-file(GLOB MAIN_SRC
+file(GLOB_RECURSE ALL_SRC
 	src/*.cpp
+	src/*.hpp
 	src/*.h
 )
 
-source_group("all" FILES ${MAIN_SRC})
-
-file(GLOB ALL_SRC
-	${MAIN_SRC}
-)
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${ALL_SRC})
 
 if(WIN32)
     add_definitions(-DNOMINMAX)
 
-    add_executable(${PROJECT_NAME} 
+    add_executable(${PROJECT_NAME}
         ${ALL_SRC}
     )
 
