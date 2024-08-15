@@ -49,6 +49,7 @@ the build system, or the command line options of your compiler.
 */
 
 #define SOL_ALL_SAFETIES_ON 1
+//#define SOL_EXCEPTIONS_SAFE_PROPAGATION 1
 
 // end of sol/config.hpp
 

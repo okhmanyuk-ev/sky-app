@@ -191,7 +191,6 @@ end)";
 
 		DownloadFileToMemory(url, [](void* memory, size_t size) {
 			gLuaCode = std::string((char*)memory, size);
-			sky::Log(gLuaCode);
 			ExecuteLuaCode();
 		});
 	});
@@ -221,7 +220,14 @@ void Application::onFrame()
 		}
 	}
 
-	gScratch.flush();
+	try
+	{
+		gScratch.flush();
+	}
+	catch (const std::exception& e)
+	{
+		sky::Log(Console::Color::Red, e.what());
+	}
 
 	ImGui::Begin("Lua Editor");
 	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
