@@ -45,6 +45,7 @@ static void DownloadFileToMemory(const std::string& url, DownloadCallback callba
 		auto callback = (DownloadCallback*)fetch->userData;
 		(*callback)((void*)memory, size);
 		delete callback;
+		sky::Log("fetched {} bytes", size);
 		emscripten_fetch_close(fetch);
 	};
 
@@ -179,13 +180,27 @@ R"(function Frame()
 end)";
 	ExecuteLuaCode();
 
-	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
+	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [](CON_ARGS) {
 		auto url = CON_ARG(0);
+
+		if (!url.starts_with("http://") && !url.starts_with("https://"))
+			url = "http://" + url;
+
+		if (!url.ends_with("/main.lua"))
+			url += "/main.lua";
+
 		DownloadFileToMemory(url, [](void* memory, size_t size) {
 			gLuaCode = std::string((char*)memory, size);
 			sky::Log(gLuaCode);
 			ExecuteLuaCode();
 		});
+	});
+
+	CONSOLE->registerCommand("run_github", std::nullopt, { "user", "repository", "branch" }, {}, [](CON_ARGS) {
+		auto user = CON_ARG(0);
+		auto repository = CON_ARG(1);
+		auto branch = CON_ARG(2);
+		CONSOLE->execute(std::format("run \"https://raw.githubusercontent.com/{}/{}/{}\"", user, repository, branch));
 	});
 }
 
