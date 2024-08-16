@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sky/sky.h>
+#include <sol/sol.hpp>
 
 namespace skyapp
 {
@@ -29,6 +30,24 @@ namespace skyapp
 		Settings settings;
 	};
 
+	using Button = Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>;
+
+	class App : public Scene::Node
+	{
+	public:
+		App(bool drawBackButton);
+
+	protected:
+		void draw() override;
+
+	public:
+		void setLuaCode(const std::string& lua);
+
+	private:
+		sol::state mSolState;
+		std::string mLuaCode;
+	};
+
 	class Application : public Shared::Application,
 		public Common::FrameSystem::Frameable
 	{
@@ -39,8 +58,12 @@ namespace skyapp
 	private:
 		void onFrame() override;
 		void drawShowcaseApps();
+		void runNewApp(std::string url, bool drawBackButton);
+		std::string makeGithubUrl(const std::string& user, const std::string& repository, const std::string& branch,
+			const std::string& filename);
 
 	private:
 		std::vector<ShowcaseApp> mShowcaseApps;
+		std::shared_ptr<App> mApp;
 	};
 }

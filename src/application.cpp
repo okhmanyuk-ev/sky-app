@@ -1,5 +1,4 @@
 #include "application.h"
-#include <sol/sol.hpp>
 #ifndef PLATFORM_EMSCRIPTEN
 #include <curl/curl.h>
 #else
@@ -95,8 +94,6 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 #endif
 }
 
-static sol::state gSolState;
-static std::string gLuaCode;
 static skygfx::utils::Scratch gScratch;
 static bool gLuaCodeLoaded = false;
 
@@ -124,27 +121,6 @@ static int HandlePanic(lua_State* L)
 	return 0;
 }
 
-static void ExecuteLuaCode()
-{
-	if (gLuaCode.empty())
-		return;
-
-	auto res = gSolState.do_string(gLuaCode);
-
-	if (!res.valid())
-		HandleError(res);
-	else
-		gLuaCodeLoaded = true;
-}
-
-static void Run(const std::string& url)
-{
-	DownloadFileToMemory(url, [](void* memory, size_t size) {
-		gLuaCode = std::string((char*)memory, size);
-		ExecuteLuaCode();
-	});
-}
-
 Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 {
 	PLATFORM->setTitle(PRODUCT_NAME);
@@ -168,70 +144,17 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 
 	// initialize lua
 
-	gSolState.open_libraries();
-	gSolState.set_panic(HandlePanic);
-
-	auto nsConsole = gSolState.create_named_table("Console");
-	nsConsole["Execute"] = [](const std::string& s) {
-		CONSOLE->execute(s);
-	};
-	nsConsole["Write"] = [](const std::string& s, std::optional<int> _color) {
-		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
-		CONSOLE_DEVICE->write(s, color);
-	};
-	nsConsole["WriteLine"] = [](const std::string& s, std::optional<int> _color) {
-		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
-		CONSOLE_DEVICE->writeLine(s, color);
-	};
-
-	auto nsGfx = gSolState.create_named_table("Gfx");
-	nsGfx["Clear"] = [](float r, float g, float b, float a) {
-		skygfx::Clear(glm::vec4{ r, g, b, a });
-	};
-	for (auto mode : magic_enum::enum_values<skygfx::utils::MeshBuilder::Mode>())
-	{
-		auto name  = magic_enum::enum_name(mode);
-		nsGfx[name] = mode;
-	}
-	nsGfx["Begin"] = [](int _mode) {
-		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
-		gScratch.begin(mode.value());
-	};
-	nsGfx["Vertex"] = [](float x, float y, float z, float r, float g, float b, float a) {
-		gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
-	};
-	nsGfx["End"] = [] {
-		gScratch.end();
-	};
-	nsGfx["Flush"] = [] {
-		gScratch.flush();
-	};
-
-	//lua.do_string("package.path = package.path .. ';./assets/scripting/?.lua'");
-//	gLuaCode =
-//R"(function Frame()
-//	Gfx.Clear(0.125, 0.125, 0.125, 1.0);
-//end)";
-//	ExecuteLuaCode();
-
-	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [](CON_ARGS) {
+	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
 		auto url = CON_ARG(0);
-
-		if (!url.starts_with("http://") && !url.starts_with("https://"))
-			url = "http://" + url;
-
-		if (!url.ends_with("/main.lua"))
-			url += "/main.lua";
-
-		Run(url);
+		runNewApp(url, false);
 	});
 
-	CONSOLE->registerCommand("run_github", std::nullopt, { "user", "repository", "branch"  }, { "filename" }, [](CON_ARGS) {
+	CONSOLE->registerCommand("run_github", std::nullopt, { "user", "repository", "branch"  }, { "filename" }, [this](CON_ARGS) {
 		auto user = CON_ARG(0);
 		auto repository = CON_ARG(1);
 		auto branch = CON_ARG(2);
 		auto filename = CON_ARGS_COUNT <= 3 ? "main.lua" : CON_ARG(3);
-		Run(std::format("https://raw.githubusercontent.com/{}/{}/{}/{}", user, repository, branch, filename));
+		runNewApp(makeGithubUrl(user, repository, branch, filename), false);
 	});
 
 	CONSOLE->registerCommand("showcase", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
@@ -276,10 +199,14 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 		});
 	});
 
-	CONSOLE->registerCommand("stop", std::nullopt, {}, {}, [](CON_ARGS) {
+	CONSOLE->registerCommand("exit", std::nullopt, {}, {}, [this](CON_ARGS) {
 		gLuaCodeLoaded = false;
+		if (mApp)
+		{
+			mApp->getParent()->detach(mApp);
+			mApp.reset();
+		}
 	});
-
 
 	DownloadFileToMemory("http://localhost/apps.json", [](auto, auto) {
 		CONSOLE->execute("showcase localhost");
@@ -336,14 +263,14 @@ void Application::drawShowcaseApps()
 	{
 		auto callback = std::visit(cases{
 			[&](const ShowcaseApp::UrlSettings& settings) -> std::function<void()> {
-				return [settings] {
-					CONSOLE->execute(std::format("run \"{}\"", settings.url));
+				return [this, settings] {
+					runNewApp(settings.url, true);
 				};
 			},
-			[](const ShowcaseApp::GithubSettings& settings) -> std::function<void()> {
-				return [settings] {
-					CONSOLE->execute(std::format("run_github {} {} {} {}", settings.user, settings.repository,
-						settings.branch, settings.filename));
+			[&](const ShowcaseApp::GithubSettings& settings) -> std::function<void()> {
+				return [this, settings] {
+					runNewApp(makeGithubUrl(settings.user, settings.repository, settings.branch,
+						settings.filename), true);
 				};
 			}
 		}, app.settings);
@@ -370,7 +297,7 @@ void Application::drawShowcaseApps()
 			label->setText(sky::to_wstring(app.name));
 			rect->attach(label);
 
-			auto button = std::make_shared<Shared::SceneHelpers::RectangleButton>();
+			auto button = std::make_shared<Button>();
 			button->setAnchor(1.0f);
 			button->setPivot(1.0f);
 			button->setPosition({ -24.0f, -24.0f });
@@ -383,6 +310,30 @@ void Application::drawShowcaseApps()
 	}
 }
 
+void Application::runNewApp(std::string url, bool drawBackButton)
+{
+	if (!url.starts_with("http://") && !url.starts_with("https://"))
+		url = "http://" + url;
+
+	if (!url.ends_with(".lua"))
+		url += "/main.lua";
+
+	DownloadFileToMemory(url, [this, drawBackButton](void* memory, size_t size) {
+		if (mApp)
+			mApp->getParent()->detach(mApp);
+
+		mApp = std::make_shared<App>(drawBackButton);
+		mApp->setLuaCode(std::string((char*)memory, size));
+		getScene()->getRoot()->attach(mApp);
+	});
+}
+
+std::string Application::makeGithubUrl(const std::string& user, const std::string& repository, const std::string& branch,
+	const std::string& filename)
+{
+	return std::format("https://raw.githubusercontent.com/{}/{}/{}/{}", user, repository, branch, filename);
+}
+
 void Application::onFrame()
 {
 	if (!gLuaCodeLoaded)
@@ -390,8 +341,68 @@ void Application::onFrame()
 		drawShowcaseApps();
 		return;
 	}
+}
 
-	auto res = gSolState["Frame"]();
+App::App(bool drawBackButton)
+{
+	if (drawBackButton)
+	{
+		auto button = std::make_shared<Button>();
+		button->setPosition({ 32.0f, 32.0f });
+		button->setSize({ 96.0f, 32.0f });
+		button->getLabel()->setText(L"EXIT");
+		button->setClickCallback([] {
+			CONSOLE->execute("exit");
+		});
+		button->setRounding(0.5f);
+		attach(button);
+	}
+
+	mSolState.open_libraries();
+	mSolState.set_panic(HandlePanic);
+
+	auto nsConsole = mSolState.create_named_table("Console");
+	nsConsole["Execute"] = [](const std::string& s) {
+		CONSOLE->execute(s);
+	};
+	nsConsole["Write"] = [](const std::string& s, std::optional<int> _color) {
+		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
+		CONSOLE_DEVICE->write(s, color);
+	};
+	nsConsole["WriteLine"] = [](const std::string& s, std::optional<int> _color) {
+		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
+		CONSOLE_DEVICE->writeLine(s, color);
+	};
+
+	auto nsGfx = mSolState.create_named_table("Gfx");
+	nsGfx["Clear"] = [](float r, float g, float b, float a) {
+		skygfx::Clear(glm::vec4{ r, g, b, a });
+	};
+	for (auto mode : magic_enum::enum_values<skygfx::utils::MeshBuilder::Mode>())
+	{
+		auto name  = magic_enum::enum_name(mode);
+		nsGfx[name] = mode;
+	}
+	nsGfx["Begin"] = [](int _mode) {
+		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
+		gScratch.begin(mode.value());
+	};
+	nsGfx["Vertex"] = [](float x, float y, float z, float r, float g, float b, float a) {
+		gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
+	};
+	nsGfx["End"] = [] {
+		gScratch.end();
+	};
+	nsGfx["Flush"] = [] {
+		gScratch.flush();
+	};
+}
+
+void App::draw()
+{
+	Scene::Node::draw();
+
+	auto res = mSolState["Frame"]();
 	if (!res.valid())
 	{
 		HandleError(res);
@@ -414,8 +425,23 @@ void Application::onFrame()
 
 	auto flags = ImGuiInputTextFlags_AllowTabInput;
 
-	if (ImGui::InputTextMultiline("Lua", &gLuaCode, { -1, -1 }, flags))
-		ExecuteLuaCode();
+	if (ImGui::InputTextMultiline("Lua", &mLuaCode, { -1, -1 }, flags))
+		setLuaCode(mLuaCode);
 
 	ImGui::End();
+}
+
+void App::setLuaCode(const std::string& lua)
+{
+	mLuaCode = lua;
+
+	if (lua.empty())
+		return;
+
+	auto res = mSolState.do_string(lua);
+
+	if (!res.valid())
+		HandleError(res);
+	else
+		gLuaCodeLoaded = true;
 }
