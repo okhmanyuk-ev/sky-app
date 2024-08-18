@@ -517,6 +517,65 @@ App::App(bool drawBackButton)
 	};
 }
 
+static void DisplayTable(const sol::table& tbl, std::string prefix)
+{
+	for (const auto& pair : tbl)
+	{
+		std::string name;
+
+		if (pair.first.get_type() == sol::type::string) {
+			name = pair.first.as<std::string>();
+		}
+		else if (pair.first.get_type() == sol::type::number) {
+			name = std::to_string(pair.first.as<double>());
+		}
+		else {
+			name = " (non-string key)";
+		}
+
+		if (name == "_G")
+			continue;
+
+		if (name == "loaded")
+			continue;
+
+		name = prefix + name;
+
+		sol::object value = pair.second;
+
+		auto drawText = [&](const std::string& text) {
+			ImGui::Text("%s", text.c_str());
+		};
+
+		if (value.get_type() == sol::type::function) {
+			drawText(name + " (function)");
+		}
+		else if (value.get_type() == sol::type::number) {
+			drawText(name + " (number): " + std::to_string(value.as<double>()));
+		}
+		else if (value.get_type() == sol::type::string) {
+			drawText(name + " (string): " + value.as<std::string>());
+		}
+		else if (value.get_type() == sol::type::table) {
+			if (ImGui::TreeNode((prefix + name).c_str())) {
+				DisplayTable(value.as<sol::table>(), prefix + name + ".");
+				ImGui::TreePop();
+			}
+		}
+		else {
+			drawText(name + " (other)");
+		}
+	}
+}
+
+static void ShowLuaFunctions(sol::state& lua)
+{
+	ImGui::Begin("Lua Functions");
+	sol::table globals = lua.globals();
+	DisplayTable(globals, "");
+	ImGui::End();
+}
+
 void App::draw()
 {
 	Scene::Node::draw();
@@ -539,7 +598,7 @@ void App::draw()
 		sky::Log(Console::Color::Red, e.what());
 	}
 
-	ImGui::Begin("Lua Editor");
+	ImGui::Begin("Lua");
 	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
 
 	auto flags = ImGuiInputTextFlags_AllowTabInput;
@@ -548,6 +607,8 @@ void App::draw()
 		setLuaCode(mLuaCode);
 
 	ImGui::End();
+
+	ShowLuaFunctions(mSolState);
 }
 
 void App::setLuaCode(const std::string& lua)
