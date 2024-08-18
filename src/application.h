@@ -58,7 +58,8 @@ namespace skyapp
 	private:
 		void onFrame() override;
 		void drawShowcaseApps();
-		void runNewApp(std::string url, bool drawBackButton);
+		void openShowcase(std::string url, std::function<void()> onFail = nullptr);
+		void runApp(std::string url, bool drawBackButton);
 		std::string makeGithubUrl(const std::string& user, const std::string& repository, const std::string& branch,
 			const std::string& filename);
 

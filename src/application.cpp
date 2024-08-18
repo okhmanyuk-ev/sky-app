@@ -20,7 +20,7 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	auto curl = curl_easy_init();
 
 	auto failed = [&] {
-		sky::Log("fetch failed");
+		sky::Log("fetch failed {}", url);
 		if (downloadFailedCallback)
 			downloadFailedCallback();
 	};
@@ -49,8 +49,9 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	if (res != CURLE_OK)
 		failed();
 #else
-	struct Callbacks
+	struct Settings
 	{
+		std::string url;
 		DownloadedCallback downloadedCallback;
 		DownloadFailedCallback downloadFailedCallback;
 	};
@@ -58,29 +59,31 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	auto onsuccess = [](emscripten_fetch_t* fetch) {
 		auto memory = fetch->data;
 		auto size = fetch->numBytes;
-		auto callbacks = (Callbacks*)fetch->userData;
-		callbacks->downloadedCallback((void*)memory, size);
-		delete callbacks;
-		sky::Log("fetched {} bytes", size);
+		auto settings = (Settings*)fetch->userData;
+		sky::Log("fetched {} bytes from {}", size, settings->url);
+		settings->downloadedCallback((void*)memory, size);
+		delete settings;
 		emscripten_fetch_close(fetch);
 	};
 
 	auto onerror = [](emscripten_fetch_t* fetch) {
-		sky::Log("fetch failed");
-		auto callbacks = (Callbacks*)fetch->userData;
-		if (callbacks->downloadFailedCallback)
-			callbacks->downloadFailedCallback();
-		delete callbacks;
+		auto settings = (Settings*)fetch->userData;
+		sky::Log("fetch failed from {}", settings->url);
+		if (settings->downloadFailedCallback)
+			settings->downloadFailedCallback();
+		delete settings;
 		emscripten_fetch_close(fetch);
 	};
 
 	auto onprogress = [](emscripten_fetch_t* fetch) {
-		sky::Log("fetch progress {} of {}", fetch->dataOffset, fetch->totalBytes);
+		auto settings = (Settings*)fetch->userData;
+		sky::Log("fetch progress {} of {} from {}", fetch->dataOffset, fetch->totalBytes, settings->url);
 	};
 
-	auto callbacks = new Callbacks;
-	callbacks->downloadedCallback = downloadedCallback;
-	callbacks->downloadFailedCallback = downloadFailedCallback;
+	auto settings = new Settings;
+	settings->url = url;
+	settings->downloadedCallback = downloadedCallback;
+	settings->downloadFailedCallback = downloadFailedCallback;
 
 	emscripten_fetch_attr_t attr;
 	emscripten_fetch_attr_init(&attr);
@@ -89,7 +92,7 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	attr.onsuccess = onsuccess;
 	attr.onerror = onerror;
 	attr.onprogress = onprogress;
-	attr.userData = callbacks;
+	attr.userData = settings;
 	emscripten_fetch(&attr, url.c_str());
 #endif
 }
@@ -146,7 +149,7 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 
 	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
 		auto url = CON_ARG(0);
-		runNewApp(url, false);
+		runApp(url, false);
 	});
 
 	CONSOLE->registerCommand("run_github", std::nullopt, { "user", "repository", "branch"  }, { "filename" }, [this](CON_ARGS) {
@@ -154,49 +157,7 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 		auto repository = CON_ARG(1);
 		auto branch = CON_ARG(2);
 		auto filename = CON_ARGS_COUNT <= 3 ? "main.lua" : CON_ARG(3);
-		runNewApp(makeGithubUrl(user, repository, branch, filename), false);
-	});
-
-	CONSOLE->registerCommand("showcase", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
-		auto url = CON_ARG(0);
-
-		if (!url.starts_with("http://") && !url.starts_with("https://"))
-			url = "http://" + url;
-
-		if (!url.ends_with("/apps.json"))
-			url += "/apps.json";
-
-		DownloadFileToMemory(url, [this](void* memory, size_t size) {
-			auto str = std::string((char*)memory, size);
-			auto json = nlohmann::json::parse(str);
-			for (auto entry : json)
-			{
-				ShowcaseApp app;
-				app.name = entry["name"];
-				std::string type = entry["type"];
-				if (type == "url")
-				{
-					ShowcaseApp::UrlSettings settings;
-					settings.url = entry["url"];
-					app.settings = settings;
-				}
-				else if (type == "github")
-				{
-					ShowcaseApp::GithubSettings settings;
-					settings.user = entry["user"];
-					settings.repository = entry["repository"];
-					settings.branch = entry["branch"];
-
-					if (entry.contains("filename"))
-						settings.filename = entry["filename"];
-					else
-						settings.filename = "main.lua";
-
-					app.settings = settings;
-				}
-				mShowcaseApps.push_back(app);
-			}
-		});
+		runApp(makeGithubUrl(user, repository, branch, filename), false);
 	});
 
 	CONSOLE->registerCommand("exit", std::nullopt, {}, {}, [this](CON_ARGS) {
@@ -208,10 +169,8 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 		}
 	});
 
-	DownloadFileToMemory("http://localhost/apps.json", [](auto, auto) {
-		CONSOLE->execute("showcase localhost");
-	}, [] {
-		CONSOLE->execute("showcase \"https://raw.githubusercontent.com/okhmanyuk-ev/sky-app-showcase/main\"");
+	openShowcase(makeGithubUrl("okhmanyuk-ev", "sky-app-showcase", "main", "apps.json"), [this] {
+		openShowcase("localhost/apps.json");
 	});
 }
 
@@ -241,9 +200,7 @@ void Application::drawShowcaseApps()
 	auto scrollbox = IMSCENE->spawn<Scene::ClippableScissor<Scene::Scrollbox>>(*scroll_holder);
 	if (IMSCENE->isFirstCall())
 	{
-		auto content = std::make_shared<Scene::AutoSized<Scene::Node>>();
-		content->setAutoSizeWidthEnabled(false);
-		scrollbox->setCustomContent(content);
+		scrollbox->getContent()->setAutoSizeHeightEnabled(true);
 		scrollbox->setStretch(1.0f);
 		scrollbox->getBounding()->setStretch(1.0f);
 		scrollbox->getContent()->setStretch({ 1.0f, 0.0f });
@@ -252,7 +209,7 @@ void Application::drawShowcaseApps()
 	auto grid = IMSCENE->spawn<Scene::AutoSized<Scene::Grid>>(*scrollbox->getContent());
 	if (IMSCENE->isFirstCall())
 	{
-		grid->setOrientation(Scene::Grid::Orientation::Vertical);
+		grid->setDirection(Scene::Grid::Direction::RightDown);
 		grid->setAutoSizeWidthEnabled(false);
 		grid->setAnchor(0.5f);
 		grid->setPivot(0.5f);
@@ -264,12 +221,12 @@ void Application::drawShowcaseApps()
 		auto callback = std::visit(cases{
 			[&](const ShowcaseApp::UrlSettings& settings) -> std::function<void()> {
 				return [this, settings] {
-					runNewApp(settings.url, true);
+					runApp(settings.url, true);
 				};
 			},
 			[&](const ShowcaseApp::GithubSettings& settings) -> std::function<void()> {
 				return [this, settings] {
-					runNewApp(makeGithubUrl(settings.user, settings.repository, settings.branch,
+					runApp(makeGithubUrl(settings.user, settings.repository, settings.branch,
 						settings.filename), true);
 				};
 			}
@@ -290,12 +247,37 @@ void Application::drawShowcaseApps()
 			rect->setAbsoluteRounding(true);
 			item->attach(rect);
 
-			auto label = std::make_shared<Scene::Label>();
-			label->setAnchor(0.0f);
-			label->setPivot(0.0f);
-			label->setPosition({ 24.0f, 24.0f });
-			label->setText(sky::to_wstring(app.name));
-			rect->attach(label);
+			auto title_holder = std::make_shared<Scene::ClippableScissor<Scene::AutoSized<Scene::Node>>>();
+			title_holder->setAutoSizeWidthEnabled(false);
+			title_holder->setPosition({ 0.0f, 24.0f });
+			title_holder->setStretch({ 1.0f, 0.0f });
+			title_holder->setSize({ -48.0f, 0.0f });
+			title_holder->setAnchor({ 0.5f, 0.0f });
+			title_holder->setPivot({ 0.5f, 0.0f });
+			rect->attach(title_holder);
+
+			auto title = std::make_shared<Scene::Label>();
+			title->setText(sky::to_wstring(app.name));
+			title->runAction(Actions::Collection::RepeatInfinite([title, title_holder]() -> std::unique_ptr<Actions::Action> {
+				if (title->getAbsoluteWidth() <= title_holder->getAbsoluteWidth())
+					return Actions::Collection::Wait(1.0f); // do nothing if holder is greater than title
+
+				constexpr float MoveDuration = 2.5f;
+
+				return Actions::Collection::MakeSequence(
+					Actions::Collection::Wait(1.0f),
+					Actions::Collection::MakeParallel(
+						Actions::Collection::ChangeHorizontalAnchor(title, 1.0f, MoveDuration, Easing::CubicInOut),
+						Actions::Collection::ChangeHorizontalPivot(title, 1.0f, MoveDuration, Easing::CubicInOut)
+					),
+					Actions::Collection::Wait(1.0f),
+					Actions::Collection::MakeParallel(
+						Actions::Collection::ChangeHorizontalAnchor(title, 0.0f, MoveDuration, Easing::CubicInOut),
+						Actions::Collection::ChangeHorizontalPivot(title, 0.0f, MoveDuration, Easing::CubicInOut)
+					)
+				);
+			}));
+			title_holder->attach(title);
 
 			auto button = std::make_shared<Button>();
 			button->setAnchor(1.0f);
@@ -310,7 +292,76 @@ void Application::drawShowcaseApps()
 	}
 }
 
-void Application::runNewApp(std::string url, bool drawBackButton)
+void Application::openShowcase(std::string url, std::function<void()> onFail)
+{
+	if (!url.starts_with("http://") && !url.starts_with("https://"))
+		url = "http://" + url;
+
+	//if (!url.ends_with("/apps.json"))
+	//	url += "/apps.json";
+
+	DownloadFileToMemory(url, [this](void* memory, size_t size) {
+		auto str = std::string((char*)memory, size);
+		auto json = nlohmann::json::parse(str);
+		for (auto entry : json)
+		{
+			std::string type = entry["type"];
+
+			if (type == "showcase")
+			{
+				std::string showcase_type = entry["showcase_type"];
+				if (showcase_type == "url")
+				{
+					std::string url = entry["url"];
+					openShowcase(url);
+				}
+				else if (showcase_type == "github")
+				{
+					std::string user = entry["user"];
+					std::string repository = entry["repository"];
+					std::string branch = entry["branch"];
+					std::string filename = [&]() -> std::string {
+						if (entry.contains("filename"))
+							return entry["filename"];
+
+						return "apps.json";
+					}();
+					openShowcase(makeGithubUrl(user, repository, branch, filename));
+				}
+			}
+			else if (type == "app")
+			{
+				std::string app_type = entry["app_type"];
+				ShowcaseApp app;
+				if (app_type == "url")
+				{
+					ShowcaseApp::UrlSettings settings;
+					settings.url = entry["url"];
+					app.name = settings.url; // TODO: must be fetched from app
+					app.settings = settings;
+				}
+				else if (app_type == "github")
+				{
+					ShowcaseApp::GithubSettings settings;
+					settings.user = entry["user"];
+					settings.repository = entry["repository"];
+					settings.branch = entry["branch"];
+
+					if (entry.contains("filename"))
+						settings.filename = entry["filename"];
+					else
+						settings.filename = "main.lua";
+
+					app.name = settings.repository + "/" + settings.filename;
+					app.settings = settings;
+				}
+				mShowcaseApps.push_back(app);
+			}
+		}
+	}, onFail);
+}
+
+void Application::runApp(std::string url, bool drawBackButton)
 {
 	if (!url.starts_with("http://") && !url.starts_with("https://"))
 		url = "http://" + url;
