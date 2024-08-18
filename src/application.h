@@ -7,27 +7,9 @@ namespace skyapp
 {
 	struct ShowcaseApp
 	{
-		struct UrlSettings
-		{
-			std::string url;
-		};
-
-		struct GithubSettings
-		{
-			std::string name;
-			std::string user;
-			std::string repository;
-			std::string branch;
-			std::string filename;
-		};
-
-		using Settings = std::variant<
-			UrlSettings,
-			GithubSettings
-		>;
-
 		std::string name;
-		Settings settings;
+		std::optional<std::string> avatar;
+		std::string entry_point;
 	};
 
 	using Button = Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>;
@@ -59,6 +41,7 @@ namespace skyapp
 		void onFrame() override;
 		void drawShowcaseApps();
 		void openShowcase(std::string url, std::function<void()> onFail = nullptr);
+		void openAppPreview(std::string url);
 		void runApp(std::string url, bool drawBackButton);
 		std::string makeGithubUrl(const std::string& user, const std::string& repository, const std::string& branch,
 			const std::string& filename);

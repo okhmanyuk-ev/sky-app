@@ -14,13 +14,13 @@ using DownloadFailedCallback = std::function<void()>;
 static void DownloadFileToMemory(const std::string& url, DownloadedCallback downloadedCallback,
 	DownloadFailedCallback downloadFailedCallback = nullptr)
 {
-	sky::Log("fetching {}", url);
+	sky::Log("fetch {}", url);
 
 #ifndef PLATFORM_EMSCRIPTEN
 	auto curl = curl_easy_init();
 
 	auto failed = [&] {
-		sky::Log("fetch failed {}", url);
+		sky::Log(Console::Color::Red, "fetch failed {}", url);
 		if (downloadFailedCallback)
 			downloadFailedCallback();
 	};
@@ -32,22 +32,29 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	}
 
 	auto write_func = +[](char* memory, size_t size, size_t nmemb, void* userdata) -> size_t {
-		auto real_size = size * nmemb;
-		auto callback = *(DownloadedCallback*)userdata;
-		sky::Log("fetched {} bytes", real_size);
-		callback((void*)memory, real_size);
+		size_t real_size = size * nmemb;
+		auto* buffer = static_cast<std::vector<uint8_t>*>(userdata);
+		buffer->insert(buffer->end(), memory, memory + real_size);
 		return real_size;
 	};
 
+	std::vector<uint8_t> buffer;
+
 	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_func);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &downloadedCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
 
 	auto res = curl_easy_perform(curl);
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK)
+	{
 		failed();
+		return;
+	}
+
+	sky::Log(Console::Color::Green, "fetched {} bytes from {}", buffer.size(), url);
+	downloadedCallback(buffer.data(), buffer.size());
 #else
 	struct Settings
 	{
@@ -60,15 +67,16 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 		auto memory = fetch->data;
 		auto size = fetch->numBytes;
 		auto settings = (Settings*)fetch->userData;
-		sky::Log("fetched {} bytes from {}", size, settings->url);
+		sky::Log(Console::Color::Green, "fetched {} bytes from {}", size, settings->url);
 		settings->downloadedCallback((void*)memory, size);
 		delete settings;
 		emscripten_fetch_close(fetch);
 	};
 
 	auto onerror = [](emscripten_fetch_t* fetch) {
+		auto reason = std::string(fetch->statusText);
 		auto settings = (Settings*)fetch->userData;
-		sky::Log("fetch failed from {}", settings->url);
+		sky::Log(Console::Color::Red, "fetch failed from {}, reason: {}", settings->url, reason);
 		if (settings->downloadFailedCallback)
 			settings->downloadFailedCallback();
 		delete settings;
@@ -77,7 +85,7 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 
 	auto onprogress = [](emscripten_fetch_t* fetch) {
 		auto settings = (Settings*)fetch->userData;
-		sky::Log("fetch progress {} of {} from {}", fetch->dataOffset, fetch->totalBytes, settings->url);
+		sky::Log(Console::Color::Gray, "fetch progress {} of {} from {}", fetch->dataOffset, fetch->totalBytes, settings->url);
 	};
 
 	auto settings = new Settings;
@@ -88,7 +96,7 @@ static void DownloadFileToMemory(const std::string& url, DownloadedCallback down
 	emscripten_fetch_attr_t attr;
 	emscripten_fetch_attr_init(&attr);
 	strcpy(attr.requestMethod, "GET");
-	attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+	attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_REPLACE;
 	attr.onsuccess = onsuccess;
 	attr.onerror = onerror;
 	attr.onprogress = onprogress;
@@ -218,26 +226,12 @@ void Application::drawShowcaseApps()
 
 	for (const auto& app : mShowcaseApps)
 	{
-		auto callback = std::visit(cases{
-			[&](const ShowcaseApp::UrlSettings& settings) -> std::function<void()> {
-				return [this, settings] {
-					runApp(settings.url, true);
-				};
-			},
-			[&](const ShowcaseApp::GithubSettings& settings) -> std::function<void()> {
-				return [this, settings] {
-					runApp(makeGithubUrl(settings.user, settings.repository, settings.branch,
-						settings.filename), true);
-				};
-			}
-		}, app.settings);
-
 		auto item = IMSCENE->spawn<Shared::SceneHelpers::Smoother<Scene::Node>>(*grid);
 		if (IMSCENE->isFirstCall())
 		{
 			item->setSize(256.0f);
 
-			auto rect = std::make_shared<Scene::Rectangle>();
+			auto rect = std::make_shared<Scene::ClippableStencil<Scene::Rectangle>>();
 			rect->setAnchor(0.5f);
 			rect->setPivot(0.5f);
 			rect->setStretch(1.0f);
@@ -245,7 +239,45 @@ void Application::drawShowcaseApps()
 			rect->setRounding(24.0f);
 			rect->setAlpha(0.125f);
 			rect->setAbsoluteRounding(true);
+			rect->setSlicedSpriteOptimizationEnabled(false);
 			item->attach(rect);
+
+			if (app.avatar)
+			{
+				auto avatar = std::make_shared<Scene::Sprite>();
+				avatar->setStretch(1.0f);
+				rect->attach(avatar);
+				if (auto url = app.avatar.value(); CACHE->hasTexture(url))
+				{
+					avatar->setTexture(TEXTURE(url));
+				}
+				else
+				{
+					DownloadFileToMemory(app.avatar.value(), [url, avatar](void* memory, size_t size) {
+						auto image = Graphics::Image(memory, size);
+						CACHE->loadTexture(image, url);
+						avatar->setTexture(TEXTURE(url));
+					});
+				}
+				auto white_fade = std::make_shared<Scene::Rectangle>();
+				white_fade->setStretch(1.0f);
+				white_fade->setColor({ Graphics::Color::White, 0.125f });
+				avatar->attach(white_fade);
+
+				auto top_fade = std::make_shared<Scene::Rectangle>();
+				top_fade->setStretch({ 1.0f, 0.5f });
+				top_fade->getEdgeColor(Scene::Rectangle::Edge::Top)->setColor({ Graphics::Color::Black, 0.5f });
+				top_fade->getEdgeColor(Scene::Rectangle::Edge::Bottom)->setColor({ Graphics::Color::Black, 0.0f });
+				white_fade->attach(top_fade);
+
+				auto bottom_fade = std::make_shared<Scene::Rectangle>();
+				bottom_fade->setStretch({ 1.0f, 0.5f });
+				bottom_fade->setAnchor({ 0.0f, 1.0f });
+				bottom_fade->setPivot({ 0.0f, 1.0f });
+				bottom_fade->getEdgeColor(Scene::Rectangle::Edge::Top)->setColor({ Graphics::Color::Black, 0.0f });
+				bottom_fade->getEdgeColor(Scene::Rectangle::Edge::Bottom)->setColor({ Graphics::Color::Black, 0.5f });
+				white_fade->attach(bottom_fade);
+			}
 
 			auto title_holder = std::make_shared<Scene::ClippableScissor<Scene::AutoSized<Scene::Node>>>();
 			title_holder->setAutoSizeWidthEnabled(false);
@@ -285,7 +317,9 @@ void Application::drawShowcaseApps()
 			button->setPosition({ -24.0f, -24.0f });
 			button->setSize({ 96.0f, 32.0f });
 			button->getLabel()->setText(L"RUN");
-			button->setClickCallback(callback);
+			button->setClickCallback([this, app] {
+				runApp(app.entry_point, true);
+			});
 			button->setRounding(0.5f);
 			rect->attach(button);
 		}
@@ -332,33 +366,67 @@ void Application::openShowcase(std::string url, std::function<void()> onFail)
 			else if (type == "app")
 			{
 				std::string app_type = entry["app_type"];
-				ShowcaseApp app;
 				if (app_type == "url")
 				{
-					ShowcaseApp::UrlSettings settings;
-					settings.url = entry["url"];
-					app.name = settings.url; // TODO: must be fetched from app
-					app.settings = settings;
+					std::string url = entry["url"];
+					openAppPreview(url);
 				}
 				else if (app_type == "github")
 				{
-					ShowcaseApp::GithubSettings settings;
-					settings.user = entry["user"];
-					settings.repository = entry["repository"];
-					settings.branch = entry["branch"];
+					std::string user = entry["user"];
+					std::string repository = entry["repository"];
+					std::string branch = entry["branch"];
+					std::string filename = [&]() -> std::string {
+						if (entry.contains("filename"))
+							return entry["filename"];
 
-					if (entry.contains("filename"))
-						settings.filename = entry["filename"];
-					else
-						settings.filename = "main.lua";
-
-					app.name = settings.repository + "/" + settings.filename;
-					app.settings = settings;
+						return "main.lua";
+					}();
+					openAppPreview(makeGithubUrl(user, repository, branch, filename));
 				}
-				mShowcaseApps.push_back(app);
 			}
 		}
 	}, onFail);
+}
+
+static std::string RemoveFileNameAndExtension(const std::string& url)
+{
+	size_t lastSlash = url.find_last_of('/');
+	return url.substr(0, lastSlash);
+}
+
+void Application::openAppPreview(std::string url)
+{
+	if (!url.ends_with(".lua") && !url.ends_with(".json"))
+	{
+		sky::Log("openAppPreview: url must ends with .lua or .json");
+		return;
+	}
+	if (!url.starts_with("http://") && !url.starts_with("https://"))
+		url = "http://" + url;
+
+	if (url.ends_with(".lua"))
+	{
+		ShowcaseApp app;
+		app.name = url;
+		app.entry_point = url;
+		mShowcaseApps.push_back(app);
+		return;
+	}
+	auto base = RemoveFileNameAndExtension(url) + "/";
+	DownloadFileToMemory(url, [this, base](void* memory, size_t size) {
+		auto str = std::string((char*)memory, size);
+		auto json = nlohmann::json::parse(str);
+		ShowcaseApp app;
+		app.name = json["name"];
+		if (json.contains("avatar"))
+			app.avatar = json["avatar"];
+		app.entry_point = json["entry_point"];
+		if (app.avatar)
+			app.avatar = base + app.avatar.value();
+		app.entry_point = base + app.entry_point;
+		mShowcaseApps.push_back(app);
+	});
 }
 
 void Application::runApp(std::string url, bool drawBackButton)
