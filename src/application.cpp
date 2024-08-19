@@ -602,22 +602,25 @@ void App::draw()
 {
 	Scene::Node::draw();
 
-	auto res = mSolState["Frame"]();
-	if (!res.valid())
+	if (mSolState["Frame"].is<sol::function>())
 	{
-		HandleError(res);
-		if (gScratch.isBegan())
+		auto res = mSolState["Frame"]();
+		if (!res.valid())
 		{
-			gScratch.end();
+			HandleError(res);
+			if (gScratch.isBegan())
+			{
+				gScratch.end();
+			}
 		}
-	}
-	try
-	{
-		gScratch.flush();
-	}
-	catch (const std::exception& e)
-	{
-		sky::Log(Console::Color::Red, e.what());
+		try
+		{
+			gScratch.flush();
+		}
+		catch (const std::exception& e)
+		{
+			sky::Log(Console::Color::Red, e.what());
+		}
 	}
 
 	ImGui::Begin("Lua");
