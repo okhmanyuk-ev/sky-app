@@ -480,41 +480,67 @@ App::App(bool drawBackButton)
 	mSolState.open_libraries();
 	mSolState.set_panic(HandlePanic);
 
-	auto nsConsole = mSolState.create_named_table("Console");
-	nsConsole["Execute"] = [](const std::string& s) {
+	// console
+
+	auto console = mSolState.create_named_table("Console");
+	console["Execute"] = [](const std::string& s) {
 		CONSOLE->execute(s);
 	};
-	nsConsole["Write"] = [](const std::string& s, std::optional<int> _color) {
-		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
-		CONSOLE_DEVICE->write(s, color);
-	};
-	nsConsole["WriteLine"] = [](const std::string& s, std::optional<int> _color) {
-		auto color = (Console::Color)_color.value_or((int)Console::Color::Default);
-		CONSOLE_DEVICE->writeLine(s, color);
-	};
+	console["Log"] = [](const std::string& s, std::optional<int> _color) {
+		std::optional color = Console::Color::Default;
 
-	auto nsGfx = mSolState.create_named_table("Gfx");
-	nsGfx["Clear"] = [](float r, float g, float b, float a) {
+		if (_color.has_value())
+			color = magic_enum::enum_cast<Console::Color>(_color.value());
+
+		CONSOLE_DEVICE->write("[lua] ", Console::Color::Yellow);
+		sky::Log(color.value(), s);
+	};
+	auto console_color = mSolState.create_table();
+	for (auto mode : magic_enum::enum_values<Console::Color>())
+	{
+		auto name = magic_enum::enum_name(mode);
+		console_color[name] = mode;
+	}
+	console["Color"] = console_color;
+
+	// gfx
+
+	auto gfx = mSolState.create_named_table("Gfx");
+	gfx["Clear"] = [](float r, float g, float b, float a) {
 		skygfx::Clear(glm::vec4{ r, g, b, a });
 	};
-	auto nsGfxMode = mSolState.create_table();
+	auto gfx_topology = mSolState.create_table();
+	for (auto mode : magic_enum::enum_values<skygfx::Topology>())
+	{
+		auto name = magic_enum::enum_name(mode);
+		gfx_topology[name] = mode;
+	}
+	gfx["Topology"] = gfx_topology;
+	gfx["SetTopology"] = [](int _topology) {
+		auto topology = magic_enum::enum_cast<skygfx::Topology>(_topology);
+		skygfx::SetTopology(topology.value());
+	};
+
+	//scratch
+
+	auto gfx_mode = mSolState.create_table();
 	for (auto mode : magic_enum::enum_values<skygfx::utils::MeshBuilder::Mode>())
 	{
 		auto name  = magic_enum::enum_name(mode);
-		nsGfxMode[name] = mode;
+		gfx_mode[name] = mode;
 	}
-	nsGfx["Mode"] = nsGfxMode;
-	nsGfx["Begin"] = [](int _mode) {
+	gfx["Mode"] = gfx_mode;
+	gfx["Begin"] = [](int _mode) {
 		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
 		gScratch.begin(mode.value());
 	};
-	nsGfx["Vertex"] = [](float x, float y, float z, float r, float g, float b, float a) {
+	gfx["Vertex"] = [](float x, float y, float z, float r, float g, float b, float a) {
 		gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
 	};
-	nsGfx["End"] = [] {
+	gfx["End"] = [] {
 		gScratch.end();
 	};
-	nsGfx["Flush"] = [] {
+	gfx["Flush"] = [] {
 		gScratch.flush();
 	};
 }
