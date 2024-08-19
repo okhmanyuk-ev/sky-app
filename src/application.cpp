@@ -177,6 +177,10 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 		}
 	});
 
+	CONSOLE->registerCommand("toggleconsole", std::nullopt, {}, {}, [this](CON_ARGS) {
+		std::static_pointer_cast<Shared::ConsoleDevice>(CONSOLE_DEVICE)->toggle();
+	});
+
 	openShowcase(makeGithubUrl("okhmanyuk-ev", "sky-app-showcase", "main", "apps.json"), [this] {
 		openShowcase("localhost/apps.json");
 	});
