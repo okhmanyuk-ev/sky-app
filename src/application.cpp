@@ -497,11 +497,13 @@ App::App(bool drawBackButton)
 	nsGfx["Clear"] = [](float r, float g, float b, float a) {
 		skygfx::Clear(glm::vec4{ r, g, b, a });
 	};
+	auto nsGfxMode = mSolState.create_table();
 	for (auto mode : magic_enum::enum_values<skygfx::utils::MeshBuilder::Mode>())
 	{
 		auto name  = magic_enum::enum_name(mode);
-		nsGfx[name] = mode;
+		nsGfxMode[name] = mode;
 	}
+	nsGfx["Mode"] = nsGfxMode;
 	nsGfx["Begin"] = [](int _mode) {
 		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
 		gScratch.begin(mode.value());
@@ -533,12 +535,6 @@ static void DisplayTable(const sol::table& tbl, std::string prefix)
 			name = " (non-string key)";
 		}
 
-		if (name == "_G")
-			continue;
-
-		if (name == "loaded")
-			continue;
-
 		name = prefix + name;
 
 		sol::object value = pair.second;
@@ -557,8 +553,8 @@ static void DisplayTable(const sol::table& tbl, std::string prefix)
 			drawText(name + " (string): " + value.as<std::string>());
 		}
 		else if (value.get_type() == sol::type::table) {
-			if (ImGui::TreeNode((prefix + name).c_str())) {
-				DisplayTable(value.as<sol::table>(), prefix + name + ".");
+			if (ImGui::TreeNode((name).c_str())) {
+				DisplayTable(value.as<sol::table>(), name + ".");
 				ImGui::TreePop();
 			}
 		}
