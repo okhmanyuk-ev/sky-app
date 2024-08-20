@@ -11,6 +11,21 @@ using namespace skyapp;
 using DownloadedCallback = std::function<void(void*, size_t)>;
 using DownloadFailedCallback = std::function<void()>;
 
+static void SetUrl(const std::string& url)
+{
+	if (url.empty())
+	{
+		SetUrl("/");
+		return;
+	}
+#ifdef EMSCRIPTEN
+	EM_ASM_({
+		var url = UTF8ToString($0);
+		window.history.replaceState({}, '', url);
+	}, url.c_str());
+#endif
+}
+
 static void DownloadFileToMemory(const std::string& url, DownloadedCallback downloadedCallback,
 	DownloadFailedCallback downloadFailedCallback = nullptr)
 {
@@ -175,6 +190,7 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 			mApp->getParent()->detach(mApp);
 			mApp.reset();
 		}
+		SetUrl("");
 	});
 
 	CONSOLE->registerCommand("toggleconsole", std::nullopt, {}, {}, [this](CON_ARGS) {
@@ -188,6 +204,17 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 
 Application::~Application()
 {
+}
+
+static std::string MakeFinalAppEntryPointUrl(std::string url)
+{
+	if (!url.starts_with("http://") && !url.starts_with("https://"))
+		url = "http://" + url;
+
+	if (!url.ends_with(".lua"))
+		url += "/main.lua";
+
+	return url;
 }
 
 void Application::drawShowcaseApps()
@@ -323,6 +350,7 @@ void Application::drawShowcaseApps()
 			button->getLabel()->setText(L"RUN");
 			button->setClickCallback([this, app] {
 				runApp(app.entry_point, true);
+				SetUrl(std::format("?+run {}", MakeFinalAppEntryPointUrl(app.entry_point)));
 			});
 			button->setRounding(0.5f);
 			rect->attach(button);
@@ -435,11 +463,7 @@ void Application::openAppPreview(std::string url)
 
 void Application::runApp(std::string url, bool drawBackButton)
 {
-	if (!url.starts_with("http://") && !url.starts_with("https://"))
-		url = "http://" + url;
-
-	if (!url.ends_with(".lua"))
-		url += "/main.lua";
+	url = MakeFinalAppEntryPointUrl(url);
 
 	DownloadFileToMemory(url, [this, drawBackButton](void* memory, size_t size) {
 		if (mApp)
@@ -606,9 +630,11 @@ void App::draw()
 {
 	Scene::Node::draw();
 
-	if (mSolState["Frame"].is<sol::function>())
+	auto frame = mSolState["Frame"];
+
+	if (frame.is<sol::function>())
 	{
-		auto res = mSolState["Frame"]();
+		auto res = frame();
 		if (!res.valid())
 		{
 			HandleError(res);
