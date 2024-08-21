@@ -11,6 +11,9 @@ using namespace skyapp;
 using DownloadedCallback = std::function<void(void*, size_t)>;
 using DownloadFailedCallback = std::function<void()>;
 
+SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node);
+SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle);
+
 static void SetUrl(const std::string& url)
 {
 	if (url.empty())
@@ -492,6 +495,8 @@ void Application::onFrame()
 
 App::App(bool drawBackButton)
 {
+	setStretch(1.0f);
+
 	if (drawBackButton)
 	{
 		auto button = std::make_shared<Button>();
@@ -570,6 +575,31 @@ App::App(bool drawBackButton)
 	};
 	gfx["Flush"] = [] {
 		gScratch.flush();
+	};
+
+	// scene
+
+	mSolState.new_usertype<Scene::Node>("Node");
+	mSolState.new_usertype<Scene::Rectangle>("Rectangle", sol::base_classes, sol::bases<Scene::Node>());
+
+	auto scene = mSolState.create_named_table("Scene");
+	scene["CreateRectangle"] = [] {
+		return std::make_shared<Scene::Rectangle>();
+    };
+	scene["SetSize"] = [](std::shared_ptr<Scene::Node> node, float width, float height) {
+		node->setSize({ width, height });
+	};
+	scene["SetAnchor"] = [](std::shared_ptr<Scene::Node> node, float x, float y) {
+		node->setAnchor({ x, y });
+	};
+	scene["SetPivot"] = [](std::shared_ptr<Scene::Node> node, float x, float y) {
+		node->setPivot({ x, y });
+	};
+	scene["Attach"] = [](std::shared_ptr<Scene::Node> holder, std::shared_ptr<Scene::Node> node) {
+		holder->attach(node);
+	};
+	scene["GetRoot"] = [this] {
+		return std::static_pointer_cast<Scene::Node>(shared_from_this());
 	};
 }
 
