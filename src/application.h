@@ -14,7 +14,7 @@ namespace skyapp
 
 	using Button = Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>;
 
-	class App : public Scene::Node,
+	class App : public Scene::Rectangle,
 		public std::enable_shared_from_this<App>
 	{
 	public:

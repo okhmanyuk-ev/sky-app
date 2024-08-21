@@ -496,6 +496,7 @@ void Application::onFrame()
 App::App(bool drawBackButton)
 {
 	setStretch(1.0f);
+	setColor(Graphics::Color::Black);
 
 	if (drawBackButton)
 	{
