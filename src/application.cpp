@@ -178,7 +178,7 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 
 	CONSOLE->registerCommand("run", std::nullopt, { "url" }, {}, [this](CON_ARGS) {
 		auto url = CON_ARG(0);
-		runApp(url, false);
+		runApp(url);
 	});
 
 	CONSOLE->registerCommand("run_github", std::nullopt, { "user", "repository", "branch"  }, { "filename" }, [this](CON_ARGS) {
@@ -186,7 +186,7 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 		auto repository = CON_ARG(1);
 		auto branch = CON_ARG(2);
 		auto filename = CON_ARGS_COUNT <= 3 ? "main.lua" : CON_ARG(3);
-		runApp(makeGithubUrl(user, repository, branch, filename), false);
+		runApp(makeGithubUrl(user, repository, branch, filename));
 	});
 
 	CONSOLE->registerCommand("exit", std::nullopt, {}, {}, [this](CON_ARGS) {
@@ -355,7 +355,7 @@ void Application::drawShowcaseApps()
 			button->setSize({ 96.0f, 32.0f });
 			button->getLabel()->setText(L"RUN");
 			button->setClickCallback([this, app] {
-				runApp(app.entry_point, true);
+				runApp(app.entry_point);
 				SetUrl(std::format("?+run {}", MakeFinalAppEntryPointUrl(app.entry_point)));
 			});
 			button->setRounding(0.5f);
@@ -467,15 +467,15 @@ void Application::openAppPreview(std::string url)
 	});
 }
 
-void Application::runApp(std::string url, bool drawBackButton)
+void Application::runApp(std::string url)
 {
 	url = MakeFinalAppEntryPointUrl(url);
 
-	DownloadFileToMemory(url, [this, drawBackButton](void* memory, size_t size) {
+	DownloadFileToMemory(url, [this](void* memory, size_t size) {
 		if (mApp)
 			mApp->getParent()->detach(mApp);
 
-		mApp = std::make_shared<App>(drawBackButton);
+		mApp = std::make_shared<App>(true);
 		mApp->setLuaCode(std::string((char*)memory, size));
 		getScene()->getRoot()->attach(mApp);
 	});
@@ -504,6 +504,7 @@ App::App(bool drawBackButton)
 	mRoot = std::make_shared<App::Root>();
 	mRoot->setStretch(1.0f);
 	mRoot->setDrawCallback([this] {
+		GRAPHICS->flush();
 		drawTheRoot();
 	});
 	attach(mRoot);
@@ -727,14 +728,6 @@ static void DisplayTable(const sol::table& tbl, std::string prefix)
 	}
 }
 
-static void ShowLuaFunctions(sol::state& lua)
-{
-	ImGui::Begin("Lua Functions");
-	sol::table globals = lua.globals();
-	DisplayTable(globals, "");
-	ImGui::End();
-}
-
 void App::drawTheRoot()
 {
 	auto frame = mSolState["Frame"];
@@ -764,6 +757,7 @@ void App::drawTheRoot()
 void App::onFrame()
 {
 	ImGui::Begin("Lua");
+	ImGui::Checkbox("Show lua funcs", &mShowLuaFuncs);
 	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
 
 	auto flags = ImGuiInputTextFlags_AllowTabInput;
@@ -773,7 +767,13 @@ void App::onFrame()
 
 	ImGui::End();
 
-	ShowLuaFunctions(mSolState);
+	if (mShowLuaFuncs)
+	{
+		ImGui::Begin("Lua funcs", &mShowLuaFuncs);
+		sol::table globals = mSolState.globals();
+		DisplayTable(globals, "");
+		ImGui::End();
+	}
 }
 
 void App::setLuaCode(const std::string& lua)

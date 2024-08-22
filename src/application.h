@@ -35,6 +35,7 @@ namespace skyapp
 		sol::state mSolState;
 		std::string mLuaCode;
 		std::shared_ptr<Root> mRoot;
+		bool mShowLuaFuncs = false;
 	};
 
 	class App::Root : public Scene::Node
@@ -61,7 +62,7 @@ namespace skyapp
 		void drawShowcaseApps();
 		void openShowcase(std::string url, std::function<void()> onFail = nullptr);
 		void openAppPreview(std::string url);
-		void runApp(std::string url, bool drawBackButton);
+		void runApp(std::string url);
 		std::string makeGithubUrl(const std::string& user, const std::string& repository, const std::string& branch,
 			const std::string& filename);
 
