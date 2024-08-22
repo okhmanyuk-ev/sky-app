@@ -11,8 +11,11 @@ using namespace skyapp;
 using DownloadedCallback = std::function<void(void*, size_t)>;
 using DownloadFailedCallback = std::function<void()>;
 
-SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node);
+SOL_BASE_CLASSES(Scene::Node, Scene::Transform);
+SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color);
+SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle);
 SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle);
+SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle);
 
 static void SetUrl(const std::string& url)
 {
@@ -498,6 +501,13 @@ App::App(bool drawBackButton)
 	setStretch(1.0f);
 	setColor(Graphics::Color::Black);
 
+	mRoot = std::make_shared<App::Root>();
+	mRoot->setStretch(1.0f);
+	mRoot->setDrawCallback([this] {
+		drawTheRoot();
+	});
+	attach(mRoot);
+
 	if (drawBackButton)
 	{
 		auto button = std::make_shared<Button>();
@@ -578,29 +588,97 @@ App::App(bool drawBackButton)
 		gScratch.flush();
 	};
 
+	// glm
+
+	mSolState.new_usertype<glm::vec2>("Vec2",
+		sol::call_constructor, sol::constructors<glm::vec2(), glm::vec2(float, float)>(),
+		"X", &glm::vec2::x,
+		"Y", &glm::vec2::y
+	);
+
+	mSolState.new_usertype<glm::vec3>("Vec3",
+		sol::call_constructor, sol::constructors<glm::vec3(), glm::vec3(float, float, float)>(),
+		"X", &glm::vec3::x,
+		"Y", &glm::vec3::y,
+		"Z", &glm::vec3::z
+	);
+
+	mSolState.new_usertype<glm::vec4>("Vec4",
+		sol::call_constructor, sol::constructors<glm::vec4(), glm::vec4(float, float, float, float)>(),
+		"X", &glm::vec4::x,
+		"Y", &glm::vec4::y,
+		"Z", &glm::vec4::z,
+		"W", &glm::vec4::w
+	);
+
 	// scene
 
-	mSolState.new_usertype<Scene::Node>("Node");
-	mSolState.new_usertype<Scene::Rectangle>("Rectangle", sol::base_classes, sol::bases<Scene::Node>());
-
 	auto scene = mSolState.create_named_table("Scene");
-	scene["CreateRectangle"] = [] {
-		return std::make_shared<Scene::Rectangle>();
-    };
-	scene["SetSize"] = [](std::shared_ptr<Scene::Node> node, float width, float height) {
-		node->setSize({ width, height });
+
+	scene.new_usertype<Scene::Transform>("Transform",
+		"new", sol::no_constructor,
+		"Size", sol::property(&Scene::Transform::getSize,  sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setSize)),
+		"Width", sol::property(&Scene::Transform::getWidth, &Scene::Transform::setWidth),
+		"Height", sol::property(&Scene::Transform::getHeight, &Scene::Transform::setHeight),
+		"Anchor", sol::property(&Scene::Transform::getAnchor, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setAnchor)),
+		"Pivot", sol::property(&Scene::Transform::getPivot, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setPivot)),
+		"Stretch", sol::property(&Scene::Transform::getStretch, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setStretch))
+	);
+	scene.new_usertype<Scene::Node>("Node",
+		sol::base_classes, sol::bases<Scene::Transform>(),
+		sol::call_constructor, sol::no_constructor,
+		"Attach", [](std::shared_ptr<Scene::Node> self, std::shared_ptr<Scene::Node> node) {
+			self->attach(node);
+		}
+	);
+	scene.new_usertype<Scene::Color>("Color",
+		sol::call_constructor, sol::no_constructor,
+		"Color", sol::property(&Scene::Color::getColor, sol::resolve<void(const glm::vec4&)>(&Scene::Color::setColor))
+	);
+	auto createEdgeProperty = [](Scene::Rectangle::Edge edge) {
+		return sol::property([edge](const Scene::Rectangle& self) {
+			return self.getEdgeColor(edge)->getColor();
+		}, [edge](Scene::Rectangle& self, const glm::vec4& color) {
+			self.getEdgeColor(edge)->setColor(color);
+		});
 	};
-	scene["SetAnchor"] = [](std::shared_ptr<Scene::Node> node, float x, float y) {
-		node->setAnchor({ x, y });
+
+	auto createCornerProperty = [](Scene::Rectangle::Corner corner) {
+		return sol::property([corner](const Scene::Rectangle& self) {
+			return self.getCornerColor(corner)->getColor();
+		}, [corner](Scene::Rectangle& self, const glm::vec4& color) {
+			self.getCornerColor(corner)->setColor(color);
+		});
 	};
-	scene["SetPivot"] = [](std::shared_ptr<Scene::Node> node, float x, float y) {
-		node->setPivot({ x, y });
-	};
-	scene["Attach"] = [](std::shared_ptr<Scene::Node> holder, std::shared_ptr<Scene::Node> node) {
-		holder->attach(node);
-	};
+
+	auto rectangle = scene.new_usertype<Scene::Rectangle>("Rectangle",
+		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<Scene::Rectangle>();
+		},
+		"EdgeColor", [](const Scene::Rectangle& self, Scene::Rectangle::Edge edge) {
+			return self.getEdgeColor(edge);
+		},
+		"TopColor", createEdgeProperty(Scene::Rectangle::Edge::Top),
+		"BottomColor", createEdgeProperty(Scene::Rectangle::Edge::Bottom),
+		"LeftColor", createEdgeProperty(Scene::Rectangle::Edge::Left),
+		"RightColor", createEdgeProperty(Scene::Rectangle::Edge::Right),
+		"TopLeftColor", createCornerProperty(Scene::Rectangle::Corner::TopLeft),
+		"TopRightColor", createCornerProperty(Scene::Rectangle::Corner::TopRight),
+		"BottomLeftColor", createCornerProperty(Scene::Rectangle::Corner::BottomLeft),
+		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
+	);
+	auto edges = mSolState.create_table();
+	for (auto edge : magic_enum::enum_values<Scene::Rectangle::Edge>())
+	{
+		auto name = magic_enum::enum_name(edge);
+		edges[name] = edge;
+	}
+	rectangle["Edge"] = edges;
+
 	scene["GetRoot"] = [this] {
-		return std::static_pointer_cast<Scene::Node>(shared_from_this());
+		return std::static_pointer_cast<Scene::Node>(mRoot);
 	};
 }
 
@@ -657,10 +735,8 @@ static void ShowLuaFunctions(sol::state& lua)
 	ImGui::End();
 }
 
-void App::draw()
+void App::drawTheRoot()
 {
-	Scene::Node::draw();
-
 	auto frame = mSolState["Frame"];
 
 	if (frame.is<sol::function>())
@@ -683,7 +759,10 @@ void App::draw()
 			sky::Log(Console::Color::Red, e.what());
 		}
 	}
+}
 
+void App::onFrame()
+{
 	ImGui::Begin("Lua");
 	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
 
@@ -704,10 +783,22 @@ void App::setLuaCode(const std::string& lua)
 	if (lua.empty())
 		return;
 
-	auto res = mSolState.do_string(lua);
+	mRoot->clear();
+	mRoot->clearActions();
+	auto res = mSolState.do_string(lua, "entry-point");
 
 	if (!res.valid())
+	{
 		HandleError(res);
+	}
 	else
+	{
 		gLuaCodeLoaded = true;
+	}
+}
+
+void App::Root::draw()
+{
+	Node::draw();
+	mDrawCallback();
 }

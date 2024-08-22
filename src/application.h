@@ -15,13 +15,18 @@ namespace skyapp
 	using Button = Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>;
 
 	class App : public Scene::Rectangle,
-		public std::enable_shared_from_this<App>
+		public std::enable_shared_from_this<App>,
+		public Common::FrameSystem::Frameable
 	{
+	public:
+		class Root;
+
 	public:
 		App(bool drawBackButton);
 
-	protected:
-		void draw() override;
+	private:
+		void drawTheRoot();
+		void onFrame() override;
 
 	public:
 		void setLuaCode(const std::string& lua);
@@ -29,6 +34,19 @@ namespace skyapp
 	private:
 		sol::state mSolState;
 		std::string mLuaCode;
+		std::shared_ptr<Root> mRoot;
+	};
+
+	class App::Root : public Scene::Node
+	{
+	protected:
+		void draw() override;
+
+	public:
+		void setDrawCallback(std::function<void()> value) { mDrawCallback = value; }
+
+	private:
+		std::function<void()> mDrawCallback;
 	};
 
 	class Application : public Shared::Application,
