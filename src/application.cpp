@@ -21,7 +21,7 @@ static void SetUrl(const std::string& url)
 {
 	if (url.empty())
 	{
-		SetUrl("/");
+		SetUrl("?");
 		return;
 	}
 #ifdef EMSCRIPTEN
