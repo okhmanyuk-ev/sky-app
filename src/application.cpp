@@ -756,6 +756,7 @@ void App::drawTheRoot()
 
 void App::onFrame()
 {
+	ImGui::SetNextWindowPos({ 32.0f, getAbsoluteHeight() * 0.5f }, ImGuiCond_Once);
 	ImGui::Begin("Lua");
 	ImGui::Checkbox("Show lua funcs", &mShowLuaFuncs);
 	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
