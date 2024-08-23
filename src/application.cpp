@@ -589,9 +589,12 @@ App::App(std::string url_base) :
 			skygfx::SetTopology(topology.value());
 		},
 		"Mode", createEnumTable.template operator()<skygfx::utils::MeshBuilder::Mode>(),
-		"Begin", [](int _mode) {
+		"Begin", [](int _mode, std::optional<skygfx::utils::Scratch::State> state) {
 			auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
-			gScratch.begin(mode.value());
+			if (state.has_value())
+				gScratch.begin(mode.value(), state.value());
+			else
+				gScratch.begin(mode.value());
 		},
 		"Vertex", [](const skygfx::utils::Mesh::Vertex& vertex) {
 			gScratch.vertex(vertex);
@@ -601,6 +604,14 @@ App::App(std::string url_base) :
 		},
 		"Flush", [] {
 			gScratch.flush();
+		}
+	);
+
+	gfx.new_usertype<skygfx::utils::Scratch::State>("State",
+		sol::call_constructor, sol::constructors<skygfx::utils::Scratch::State()>(),
+		"WithTexture", [](skygfx::utils::Scratch::State& state, std::shared_ptr<skygfx::Texture> texture) {
+			state.texture = texture.get();
+			return state;
 		}
 	);
 
