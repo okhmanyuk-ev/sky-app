@@ -22,7 +22,7 @@ namespace skyapp
 		class Canvas;
 
 	public:
-		App(bool drawBackButton);
+		App(std::string url_base);
 
 	private:
 		void drawCanvas();
@@ -32,6 +32,7 @@ namespace skyapp
 		void setLuaCode(const std::string& lua);
 
 	private:
+		std::string mUrlBase;
 		sol::state mSolState;
 		std::string mLuaCode;
 		std::shared_ptr<Canvas> mCanvas;

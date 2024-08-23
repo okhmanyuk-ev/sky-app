@@ -13,9 +13,10 @@ using DownloadFailedCallback = std::function<void()>;
 
 SOL_BASE_CLASSES(Scene::Node, Scene::Transform);
 SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color);
-SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle);
-SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle);
-SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle);
+SOL_BASE_CLASSES(Scene::Sprite, Scene::Node, Scene::Transform, Scene::Color);
+SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle, Scene::Sprite);
+SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle, Scene::Sprite);
+SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle, Scene::Sprite);
 
 static void SetUrl(const std::string& url)
 {
@@ -470,12 +471,13 @@ void Application::openAppPreview(std::string url)
 void Application::runApp(std::string url)
 {
 	url = MakeFinalAppEntryPointUrl(url);
+	auto base = RemoveFileNameAndExtension(url) + "/";
 
-	DownloadFileToMemory(url, [this](void* memory, size_t size) {
+	DownloadFileToMemory(url, [this, base](void* memory, size_t size) {
 		if (mApp)
 			mApp->getParent()->detach(mApp);
 
-		mApp = std::make_shared<App>(true);
+		mApp = std::make_shared<App>(base);
 		mApp->setLuaCode(std::string((char*)memory, size));
 		getScene()->getRoot()->attach(mApp);
 	});
@@ -496,7 +498,8 @@ void Application::onFrame()
 	}
 }
 
-App::App(bool drawBackButton)
+App::App(std::string url_base) :
+	mUrlBase(url_base)
 {
 	setStretch(1.0f);
 	setColor(Graphics::Color::Black);
@@ -509,18 +512,15 @@ App::App(bool drawBackButton)
 	});
 	attach(mCanvas);
 
-	if (drawBackButton)
-	{
-		auto button = std::make_shared<Button>();
-		button->setPosition({ 32.0f, 32.0f });
-		button->setSize({ 96.0f, 32.0f });
-		button->getLabel()->setText(L"EXIT");
-		button->setClickCallback([] {
-			CONSOLE->execute("exit");
-		});
-		button->setRounding(0.5f);
-		attach(button);
-	}
+	auto button = std::make_shared<Button>();
+	button->setPosition({ 32.0f, 32.0f });
+	button->setSize({ 96.0f, 32.0f });
+	button->getLabel()->setText(L"EXIT");
+	button->setClickCallback([] {
+		CONSOLE->execute("exit");
+	});
+	button->setRounding(0.5f);
+	attach(button);
 
 	mSolState.open_libraries();
 	mSolState.set_panic(HandlePanic);
@@ -579,7 +579,7 @@ App::App(bool drawBackButton)
 		"Tangent", &skygfx::utils::Mesh::Vertex::tangent
 	);
 
-	mSolState.create_named_table("Gfx",
+	auto gfx = mSolState.create_named_table("Gfx",
 		"Clear", [](float r, float g, float b, float a) {
 			skygfx::Clear(glm::vec4{ r, g, b, a });
 		},
@@ -602,6 +602,13 @@ App::App(bool drawBackButton)
 		"Flush", [] {
 			gScratch.flush();
 		}
+	);
+
+	gfx.new_usertype<skygfx::Texture>("Texture",
+		sol::call_constructor, sol::no_constructor//,
+		//"Create", [](size_t memory, size_t size) {
+		//	return std::make_shared<skygfx::Texture>();
+		//}
 	);
 
 	// glm
@@ -631,6 +638,20 @@ App::App(bool drawBackButton)
 		DownloadFileToMemory(url, [callback](void* memory, size_t size) {
 			callback((size_t)memory, size);
 		}, onfail.value_or(nullptr));
+	};
+
+	mSolState["FetchTexture"] = [base = mUrlBase](std::string url, std::function<void(std::shared_ptr<skygfx::Texture>)> callback) {
+		url = base + url;
+		if (CACHE->hasTexture(url))
+		{
+			callback(TEXTURE(url));
+			return;
+		}
+		DownloadFileToMemory(url, [callback, url](void* memory, size_t size) {
+			auto image = Graphics::Image((void*)memory, size);
+			CACHE->loadTexture(image, url);
+			callback(TEXTURE(url));
+		});
 	};
 
 	// scene
@@ -700,6 +721,14 @@ App::App(bool drawBackButton)
 		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
 	);
 
+	auto sprite = scene.new_usertype<Scene::Sprite>("Sprite",
+		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<Scene::Sprite>();
+		},
+		"Texture", sol::property(&Scene::Sprite::getTexture, sol::resolve<void(std::shared_ptr<skygfx::Texture>)>(&Scene::Sprite::setTexture))
+	);
 }
 
 static void DisplayTable(const sol::table& tbl, std::string prefix)
