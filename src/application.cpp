@@ -550,6 +550,35 @@ App::App(bool drawBackButton)
 		"Color", createEnumTable.template operator()<Console::Color>()
 	);
 
+	mSolState.new_usertype<skygfx::utils::Mesh::Vertex>("Vertex",
+		sol::call_constructor, sol::constructors<skygfx::utils::Mesh::Vertex()>(),
+		"WithPos", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec3& pos) {
+			vertex.pos = pos;
+			return vertex;
+		},
+		"WithColor", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec4& color) {
+			vertex.color = color;
+			return vertex;
+		},
+		"WithTexCoord", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec2& texcoord) {
+			vertex.texcoord = texcoord;
+			return vertex;
+		},
+		"WithNormal", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec3& normal) {
+			vertex.normal = normal;
+			return vertex;
+		},
+		"WithTangent", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec3& tangent) {
+			vertex.tangent = tangent;
+			return vertex;
+		},
+		"Pos", &skygfx::utils::Mesh::Vertex::pos,
+		"Color", &skygfx::utils::Mesh::Vertex::color,
+		"TexCoord", &skygfx::utils::Mesh::Vertex::texcoord,
+		"Normal", &skygfx::utils::Mesh::Vertex::normal,
+		"Tangent", &skygfx::utils::Mesh::Vertex::tangent
+	);
+
 	mSolState.create_named_table("Gfx",
 		"Clear", [](float r, float g, float b, float a) {
 			skygfx::Clear(glm::vec4{ r, g, b, a });
@@ -564,8 +593,8 @@ App::App(bool drawBackButton)
 			auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
 			gScratch.begin(mode.value());
 		},
-		"Vertex", [](float x, float y, float z, float r, float g, float b, float a) {
-			gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
+		"Vertex", [](const skygfx::utils::Mesh::Vertex& vertex) {
+			gScratch.vertex(vertex);
 		},
 		"End", [] {
 			gScratch.end();
