@@ -649,9 +649,12 @@ App::App(bool drawBackButton)
 		"Create", [] {
 			return std::make_shared<Scene::Rectangle>();
 		},
-		"EdgeColor", [](const Scene::Rectangle& self, Scene::Rectangle::Edge edge) {
-			return self.getEdgeColor(edge);
-		},
+		"Edge", createEnumTable.template operator()<Scene::Rectangle::Edge>(),
+		"Corner", createEnumTable.template operator()<Scene::Rectangle::Corner>(),
+		"GetEdgeColor", &Scene::Rectangle::getEdgeColor,
+		"GetCornerColor", &Scene::Rectangle::getCornerColor,
+		"Rounding", sol::property(&Scene::Rectangle::getRounding, &Scene::Rectangle::setRounding),
+		"AbsoluteRounding", sol::property(&Scene::Rectangle::isAbsoluteRounding, &Scene::Rectangle::setAbsoluteRounding),
 		"TopColor", createEdgeProperty(Scene::Rectangle::Edge::Top),
 		"BottomColor", createEdgeProperty(Scene::Rectangle::Edge::Bottom),
 		"LeftColor", createEdgeProperty(Scene::Rectangle::Edge::Left),
@@ -661,8 +664,6 @@ App::App(bool drawBackButton)
 		"BottomLeftColor", createCornerProperty(Scene::Rectangle::Corner::BottomLeft),
 		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
 	);
-	rectangle["Edge"] = createEnumTable.template operator()<Scene::Rectangle::Edge>();
-	rectangle["Corner"] = createEnumTable.template operator()<Scene::Rectangle::Corner>();
 
 	scene["GetRoot"] = [this] {
 		return std::static_pointer_cast<Scene::Node>(mCanvas);
