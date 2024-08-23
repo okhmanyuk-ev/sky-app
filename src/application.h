@@ -19,13 +19,13 @@ namespace skyapp
 		public Common::FrameSystem::Frameable
 	{
 	public:
-		class Root;
+		class Canvas;
 
 	public:
 		App(bool drawBackButton);
 
 	private:
-		void drawTheRoot();
+		void drawCanvas();
 		void onFrame() override;
 
 	public:
@@ -34,11 +34,11 @@ namespace skyapp
 	private:
 		sol::state mSolState;
 		std::string mLuaCode;
-		std::shared_ptr<Root> mRoot;
+		std::shared_ptr<Canvas> mCanvas;
 		bool mShowLuaFuncs = false;
 	};
 
-	class App::Root : public Scene::Node
+	class App::Canvas : public Scene::Node
 	{
 	protected:
 		void draw() override;

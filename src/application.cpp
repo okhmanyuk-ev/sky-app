@@ -501,13 +501,13 @@ App::App(bool drawBackButton)
 	setStretch(1.0f);
 	setColor(Graphics::Color::Black);
 
-	mRoot = std::make_shared<App::Root>();
-	mRoot->setStretch(1.0f);
-	mRoot->setDrawCallback([this] {
+	mCanvas = std::make_shared<App::Canvas>();
+	mCanvas->setStretch(1.0f);
+	mCanvas->setDrawCallback([this] {
 		GRAPHICS->flush();
-		drawTheRoot();
+		drawCanvas();
 	});
-	attach(mRoot);
+	attach(mCanvas);
 
 	if (drawBackButton)
 	{
@@ -525,6 +525,15 @@ App::App(bool drawBackButton)
 	mSolState.open_libraries();
 	mSolState.set_panic(HandlePanic);
 
+	auto createEnumTable = [&]<typename T>() {
+		auto table = mSolState.create_table();
+		for (auto value : magic_enum::enum_values<T>()) {
+			auto name = magic_enum::enum_name(value);
+			table[name] = value;
+		}
+		return table;
+	};
+
 	// console
 
 	auto console = mSolState.create_named_table("Console");
@@ -540,13 +549,7 @@ App::App(bool drawBackButton)
 		CONSOLE_DEVICE->write("[lua] ", Console::Color::Yellow);
 		sky::Log(color.value(), s);
 	};
-	auto console_color = mSolState.create_table();
-	for (auto mode : magic_enum::enum_values<Console::Color>())
-	{
-		auto name = magic_enum::enum_name(mode);
-		console_color[name] = mode;
-	}
-	console["Color"] = console_color;
+	console["Color"] = createEnumTable.template operator()<Console::Color>();
 
 	// gfx
 
@@ -554,13 +557,7 @@ App::App(bool drawBackButton)
 	gfx["Clear"] = [](float r, float g, float b, float a) {
 		skygfx::Clear(glm::vec4{ r, g, b, a });
 	};
-	auto gfx_topology = mSolState.create_table();
-	for (auto mode : magic_enum::enum_values<skygfx::Topology>())
-	{
-		auto name = magic_enum::enum_name(mode);
-		gfx_topology[name] = mode;
-	}
-	gfx["Topology"] = gfx_topology;
+	gfx["Topology"] = createEnumTable.template operator()<skygfx::Topology>();
 	gfx["SetTopology"] = [](int _topology) {
 		auto topology = magic_enum::enum_cast<skygfx::Topology>(_topology);
 		skygfx::SetTopology(topology.value());
@@ -568,13 +565,7 @@ App::App(bool drawBackButton)
 
 	//scratch
 
-	auto gfx_mode = mSolState.create_table();
-	for (auto mode : magic_enum::enum_values<skygfx::utils::MeshBuilder::Mode>())
-	{
-		auto name  = magic_enum::enum_name(mode);
-		gfx_mode[name] = mode;
-	}
-	gfx["Mode"] = gfx_mode;
+	gfx["Mode"] = createEnumTable.template operator()<skygfx::utils::MeshBuilder::Mode>();
 	gfx["Begin"] = [](int _mode) {
 		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
 		gScratch.begin(mode.value());
@@ -670,16 +661,11 @@ App::App(bool drawBackButton)
 		"BottomLeftColor", createCornerProperty(Scene::Rectangle::Corner::BottomLeft),
 		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
 	);
-	auto edges = mSolState.create_table();
-	for (auto edge : magic_enum::enum_values<Scene::Rectangle::Edge>())
-	{
-		auto name = magic_enum::enum_name(edge);
-		edges[name] = edge;
-	}
-	rectangle["Edge"] = edges;
+	rectangle["Edge"] = createEnumTable.template operator()<Scene::Rectangle::Edge>();
+	rectangle["Corner"] = createEnumTable.template operator()<Scene::Rectangle::Corner>();
 
 	scene["GetRoot"] = [this] {
-		return std::static_pointer_cast<Scene::Node>(mRoot);
+		return std::static_pointer_cast<Scene::Node>(mCanvas);
 	};
 }
 
@@ -728,7 +714,7 @@ static void DisplayTable(const sol::table& tbl, std::string prefix)
 	}
 }
 
-void App::drawTheRoot()
+void App::drawCanvas()
 {
 	auto frame = mSolState["Frame"];
 
@@ -784,8 +770,8 @@ void App::setLuaCode(const std::string& lua)
 	if (lua.empty())
 		return;
 
-	mRoot->clear();
-	mRoot->clearActions();
+	mCanvas->clear();
+	mCanvas->clearActions();
 	auto res = mSolState.do_string(lua, "entry-point");
 
 	if (!res.valid())
@@ -798,7 +784,7 @@ void App::setLuaCode(const std::string& lua)
 	}
 }
 
-void App::Root::draw()
+void App::Canvas::draw()
 {
 	Node::draw();
 	mDrawCallback();
