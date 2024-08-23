@@ -627,6 +627,12 @@ App::App(bool drawBackButton)
 		"W", &glm::vec4::w
 	);
 
+	mSolState["Fetch"] = [](const std::string& url, std::function<void(size_t memory, size_t size)> callback, std::optional<std::function<void()>> onfail) {
+		DownloadFileToMemory(url, [callback](void* memory, size_t size) {
+			callback((size_t)memory, size);
+		}, onfail.value_or(nullptr));
+	};
+
 	// scene
 
 	auto scene = mSolState.create_named_table("Scene");
