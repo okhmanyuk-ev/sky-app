@@ -534,51 +534,46 @@ App::App(bool drawBackButton)
 		return table;
 	};
 
-	// console
+	mSolState.create_named_table("Console", 
+		"Execute", [](const std::string& s) {
+			CONSOLE->execute(s);
+		},
+		"Log", [](const std::string& s, std::optional<int> _color) {
+			std::optional color = Console::Color::Default;
 
-	auto console = mSolState.create_named_table("Console");
-	console["Execute"] = [](const std::string& s) {
-		CONSOLE->execute(s);
-	};
-	console["Log"] = [](const std::string& s, std::optional<int> _color) {
-		std::optional color = Console::Color::Default;
+			if (_color.has_value())
+				color = magic_enum::enum_cast<Console::Color>(_color.value());
 
-		if (_color.has_value())
-			color = magic_enum::enum_cast<Console::Color>(_color.value());
+			CONSOLE_DEVICE->write("[lua] ", Console::Color::Yellow);
+			sky::Log(color.value(), s);
+		},
+		"Color", createEnumTable.template operator()<Console::Color>()
+	);
 
-		CONSOLE_DEVICE->write("[lua] ", Console::Color::Yellow);
-		sky::Log(color.value(), s);
-	};
-	console["Color"] = createEnumTable.template operator()<Console::Color>();
-
-	// gfx
-
-	auto gfx = mSolState.create_named_table("Gfx");
-	gfx["Clear"] = [](float r, float g, float b, float a) {
-		skygfx::Clear(glm::vec4{ r, g, b, a });
-	};
-	gfx["Topology"] = createEnumTable.template operator()<skygfx::Topology>();
-	gfx["SetTopology"] = [](int _topology) {
-		auto topology = magic_enum::enum_cast<skygfx::Topology>(_topology);
-		skygfx::SetTopology(topology.value());
-	};
-
-	//scratch
-
-	gfx["Mode"] = createEnumTable.template operator()<skygfx::utils::MeshBuilder::Mode>();
-	gfx["Begin"] = [](int _mode) {
-		auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
-		gScratch.begin(mode.value());
-	};
-	gfx["Vertex"] = [](float x, float y, float z, float r, float g, float b, float a) {
-		gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
-	};
-	gfx["End"] = [] {
-		gScratch.end();
-	};
-	gfx["Flush"] = [] {
-		gScratch.flush();
-	};
+	mSolState.create_named_table("Gfx",
+		"Clear", [](float r, float g, float b, float a) {
+			skygfx::Clear(glm::vec4{ r, g, b, a });
+		},
+		"Topology", createEnumTable.template operator()<skygfx::Topology>(),
+		"SetTopology", [](int _topology) {
+			auto topology = magic_enum::enum_cast<skygfx::Topology>(_topology);
+			skygfx::SetTopology(topology.value());
+		},
+		"Mode", createEnumTable.template operator()<skygfx::utils::MeshBuilder::Mode>(),
+		"Begin", [](int _mode) {
+			auto mode = magic_enum::enum_cast<skygfx::utils::MeshBuilder::Mode>(_mode);
+			gScratch.begin(mode.value());
+		},
+		"Vertex", [](float x, float y, float z, float r, float g, float b, float a) {
+			gScratch.vertex({ .pos = { x, y, z }, .color = { r, g, b, a } });
+		},
+		"End", [] {
+			gScratch.end();
+		},
+		"Flush", [] {
+			gScratch.flush();
+		}
+	);
 
 	// glm
 
@@ -607,6 +602,10 @@ App::App(bool drawBackButton)
 
 	auto scene = mSolState.create_named_table("Scene");
 
+	scene["GetRoot"] = [this] {
+		return std::static_pointer_cast<Scene::Node>(mCanvas);
+	};
+
 	scene.new_usertype<Scene::Transform>("Transform",
 		"new", sol::no_constructor,
 		"Size", sol::property(&Scene::Transform::getSize,  sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setSize)),
@@ -627,6 +626,7 @@ App::App(bool drawBackButton)
 		sol::call_constructor, sol::no_constructor,
 		"Color", sol::property(&Scene::Color::getColor, sol::resolve<void(const glm::vec4&)>(&Scene::Color::setColor))
 	);
+
 	auto createEdgeProperty = [](Scene::Rectangle::Edge edge) {
 		return sol::property([edge](const Scene::Rectangle& self) {
 			return self.getEdgeColor(edge)->getColor();
@@ -665,9 +665,6 @@ App::App(bool drawBackButton)
 		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
 	);
 
-	scene["GetRoot"] = [this] {
-		return std::static_pointer_cast<Scene::Node>(mCanvas);
-	};
 }
 
 static void DisplayTable(const sol::table& tbl, std::string prefix)
