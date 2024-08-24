@@ -798,7 +798,8 @@ void App::drawCanvas()
 
 	if (frame.is<sol::function>())
 	{
-		auto res = frame();
+		auto delta = Clock::ToSeconds(FRAME->getTimeDelta());
+		auto res = frame(delta);
 		if (!res.valid())
 		{
 			HandleError(res);
