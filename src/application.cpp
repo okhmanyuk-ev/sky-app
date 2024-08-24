@@ -14,9 +14,10 @@ using DownloadFailedCallback = std::function<void()>;
 SOL_BASE_CLASSES(Scene::Node, Scene::Transform);
 SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color);
 SOL_BASE_CLASSES(Scene::Sprite, Scene::Node, Scene::Transform, Scene::Color);
-SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle, Scene::Sprite);
-SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle, Scene::Sprite);
-SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle, Scene::Sprite);
+SOL_BASE_CLASSES(Scene::Label, Scene::Node, Scene::Transform, Scene::Color);
+SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle, Scene::Sprite, Scene::Label);
+SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle, Scene::Sprite, Scene::Label);
+SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle, Scene::Sprite, Scene::Label);
 
 static void SetUrl(const std::string& url)
 {
@@ -714,6 +715,23 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 			return std::make_shared<Scene::Sprite>();
 		},
 		"Texture", sol::property(&Scene::Sprite::getTexture, sol::resolve<void(std::shared_ptr<skygfx::Texture>)>(&Scene::Sprite::setTexture))
+	);
+
+	auto label = scene.new_usertype<Scene::Label>("Label",
+		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<Scene::Label>();
+		},
+		"Text", sol::property(&Scene::Label::getText, &Scene::Label::setText),
+		"FontSize", sol::property(&Scene::Label::getFontSize, &Scene::Label::setFontSize),
+		"GetOutlineColor", &Scene::Label::getOutlineColor,
+		"OutlineColor", sol::property([](const Scene::Label& self) {
+			return self.getOutlineColor()->getColor();
+		}, [](Scene::Label& self, const glm::vec4& color) {
+			self.getOutlineColor()->setColor(color);
+		}),
+		"OutlineThickness", sol::property(&Scene::Label::getOutlineThickness, &Scene::Label::setOutlineThickness)
 	);
 }
 
