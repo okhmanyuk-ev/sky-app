@@ -498,35 +498,10 @@ void Application::onFrame()
 	}
 }
 
-App::App(std::string url_base) :
-	mUrlBase(url_base)
+static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene::Node> canvas)
 {
-	setStretch(1.0f);
-	setColor(Graphics::Color::Black);
-
-	mCanvas = std::make_shared<App::Canvas>();
-	mCanvas->setStretch(1.0f);
-	mCanvas->setDrawCallback([this] {
-		GRAPHICS->flush();
-		drawCanvas();
-	});
-	attach(mCanvas);
-
-	auto button = std::make_shared<Button>();
-	button->setPosition({ 32.0f, 32.0f });
-	button->setSize({ 96.0f, 32.0f });
-	button->getLabel()->setText(L"EXIT");
-	button->setClickCallback([] {
-		CONSOLE->execute("exit");
-	});
-	button->setRounding(0.5f);
-	attach(button);
-
-	mSolState.open_libraries();
-	mSolState.set_panic(HandlePanic);
-
 	auto createEnumTable = [&]<typename T>() {
-		auto table = mSolState.create_table();
+		auto table = lua.create_table();
 		for (auto value : magic_enum::enum_values<T>()) {
 			auto name = magic_enum::enum_name(value);
 			table[name] = value;
@@ -534,7 +509,7 @@ App::App(std::string url_base) :
 		return table;
 	};
 
-	mSolState.create_named_table("Console", 
+	lua.create_named_table("Console",
 		"Execute", [](const std::string& s) {
 			CONSOLE->execute(s);
 		},
@@ -550,7 +525,7 @@ App::App(std::string url_base) :
 		"Color", createEnumTable.template operator()<Console::Color>()
 	);
 
-	mSolState.new_usertype<skygfx::utils::Mesh::Vertex>("Vertex",
+	lua.new_usertype<skygfx::utils::Mesh::Vertex>("Vertex",
 		sol::call_constructor, sol::constructors<skygfx::utils::Mesh::Vertex()>(),
 		"WithPos", [](skygfx::utils::Mesh::Vertex& vertex, const glm::vec3& pos) {
 			vertex.pos = pos;
@@ -579,7 +554,7 @@ App::App(std::string url_base) :
 		"Tangent", &skygfx::utils::Mesh::Vertex::tangent
 	);
 
-	auto gfx = mSolState.create_named_table("Gfx",
+	auto gfx = lua.create_named_table("Gfx",
 		"Clear", [](float r, float g, float b, float a) {
 			skygfx::Clear(glm::vec4{ r, g, b, a });
 		},
@@ -624,20 +599,20 @@ App::App(std::string url_base) :
 
 	// glm
 
-	mSolState.new_usertype<glm::vec2>("Vec2",
+	lua.new_usertype<glm::vec2>("Vec2",
 		sol::call_constructor, sol::constructors<glm::vec2(), glm::vec2(float, float)>(),
 		"X", &glm::vec2::x,
 		"Y", &glm::vec2::y
 	);
 
-	mSolState.new_usertype<glm::vec3>("Vec3",
+	lua.new_usertype<glm::vec3>("Vec3",
 		sol::call_constructor, sol::constructors<glm::vec3(), glm::vec3(float, float, float)>(),
 		"X", &glm::vec3::x,
 		"Y", &glm::vec3::y,
 		"Z", &glm::vec3::z
 	);
 
-	mSolState.new_usertype<glm::vec4>("Vec4",
+	lua.new_usertype<glm::vec4>("Vec4",
 		sol::call_constructor, sol::constructors<glm::vec4(), glm::vec4(float, float, float, float)>(),
 		"X", &glm::vec4::x,
 		"Y", &glm::vec4::y,
@@ -645,14 +620,14 @@ App::App(std::string url_base) :
 		"W", &glm::vec4::w
 	);
 
-	mSolState["Fetch"] = [](const std::string& url, std::function<void(size_t memory, size_t size)> callback, std::optional<std::function<void()>> onfail) {
+	lua["Fetch"] = [](const std::string& url, std::function<void(size_t memory, size_t size)> callback, std::optional<std::function<void()>> onfail) {
 		DownloadFileToMemory(url, [callback](void* memory, size_t size) {
 			callback((size_t)memory, size);
 		}, onfail.value_or(nullptr));
 	};
 
-	mSolState["FetchTexture"] = [base = mUrlBase](std::string url, std::function<void(std::shared_ptr<skygfx::Texture>)> callback) {
-		url = base + url;
+	lua["FetchTexture"] = [url_base](std::string url, std::function<void(std::shared_ptr<skygfx::Texture>)> callback) {
+		url = url_base + url;
 		if (CACHE->hasTexture(url))
 		{
 			callback(TEXTURE(url));
@@ -667,10 +642,10 @@ App::App(std::string url_base) :
 
 	// scene
 
-	auto scene = mSolState.create_named_table("Scene");
+	auto scene = lua.create_named_table("Scene");
 
-	scene["GetRoot"] = [this] {
-		return std::static_pointer_cast<Scene::Node>(mCanvas);
+	scene["GetRoot"] = [canvas] {
+		return std::static_pointer_cast<Scene::Node>(canvas);
 	};
 
 	scene.new_usertype<Scene::Transform>("Transform",
@@ -740,6 +715,36 @@ App::App(std::string url_base) :
 		},
 		"Texture", sol::property(&Scene::Sprite::getTexture, sol::resolve<void(std::shared_ptr<skygfx::Texture>)>(&Scene::Sprite::setTexture))
 	);
+}
+
+App::App(std::string url_base) :
+	mUrlBase(url_base)
+{
+	setStretch(1.0f);
+	setColor(Graphics::Color::Black);
+
+	mCanvas = std::make_shared<App::Canvas>();
+	mCanvas->setStretch(1.0f);
+	mCanvas->setDrawCallback([this] {
+		GRAPHICS->flush();
+		drawCanvas();
+	});
+	attach(mCanvas);
+
+	auto button = std::make_shared<Button>();
+	button->setPosition({ 32.0f, 32.0f });
+	button->setSize({ 96.0f, 32.0f });
+	button->getLabel()->setText(L"EXIT");
+	button->setClickCallback([] {
+		CONSOLE->execute("exit");
+	});
+	button->setRounding(0.5f);
+	attach(button);
+
+	mSolState.open_libraries();
+	mSolState.set_panic(HandlePanic);
+
+	MakeApi(mSolState, mUrlBase, mCanvas);
 }
 
 static void DisplayTable(const sol::table& tbl, std::string prefix)
