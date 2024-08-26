@@ -56,7 +56,7 @@ namespace skyapp
 	{
 	public:
 		Application();
-		~Application();
+		~Application() = default;
 
 	private:
 		void onFrame() override;

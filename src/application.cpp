@@ -172,6 +172,8 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 
 	STATS->setAlignment(Shared::StatsSystem::Align::BottomRight);
 
+	getScene()->setScreenAdaption(glm::vec2{ 1280.0f, 720.0f });
+
 	Scene::Sprite::DefaultSampler = skygfx::Sampler::Linear;
 	Scene::Sprite::DefaultTexture = TEXTURE("textures/default.png");
     Scene::Label::DefaultFont = FONT("default");
@@ -208,10 +210,6 @@ Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
 	openShowcase(makeGithubUrl("okhmanyuk-ev", "sky-app-showcase", "main", "apps.json"), [this] {
 		openShowcase("localhost/apps.json");
 	});
-}
-
-Application::~Application()
-{
 }
 
 static std::string MakeFinalAppEntryPointUrl(std::string url)
