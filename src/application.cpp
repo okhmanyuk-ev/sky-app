@@ -646,6 +646,7 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 	scene["GetRoot"] = [canvas] {
 		return std::static_pointer_cast<Scene::Node>(canvas);
 	};
+	scene["Root"] = std::static_pointer_cast<Scene::Node>(canvas);
 
 	scene.new_usertype<Scene::Transform>("Transform",
 		"new", sol::no_constructor,
@@ -654,14 +655,18 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		"Height", sol::property(&Scene::Transform::getHeight, &Scene::Transform::setHeight),
 		"Anchor", sol::property(&Scene::Transform::getAnchor, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setAnchor)),
 		"Pivot", sol::property(&Scene::Transform::getPivot, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setPivot)),
-		"Stretch", sol::property(&Scene::Transform::getStretch, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setStretch))
+		"Stretch", sol::property(&Scene::Transform::getStretch, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setStretch)),
+		"Position", sol::property(&Scene::Transform::getPosition, sol::resolve<void(const glm::vec2&)>(&Scene::Transform::setPosition)),
+		"X", sol::property(&Scene::Transform::getX, &Scene::Transform::setX),
+		"Y", sol::property(&Scene::Transform::getY, &Scene::Transform::setY)
 	);
 	scene.new_usertype<Scene::Node>("Node",
 		sol::base_classes, sol::bases<Scene::Transform>(),
 		sol::call_constructor, sol::no_constructor,
 		"Attach", [](std::shared_ptr<Scene::Node> self, std::shared_ptr<Scene::Node> node) {
 			self->attach(node);
-		}
+		},
+		"Touchable", sol::property(&Scene::Node::isTouchable, &Scene::Node::setTouchable)
 	);
 	scene.new_usertype<Scene::Color>("Color",
 		sol::call_constructor, sol::no_constructor,
@@ -730,6 +735,29 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 			self.getOutlineColor()->setColor(color);
 		}),
 		"OutlineThickness", sol::property(&Scene::Label::getOutlineThickness, &Scene::Label::setOutlineThickness)
+	);
+
+	// imscene
+
+	auto imscene = lua.create_named_table("ImScene",
+		"IsFirstCall", [] {
+			return IMSCENE->isFirstCall();
+		},
+		"SpawnRectangle", [](std::shared_ptr<Scene::Node> holder, std::optional<std::string> key) {
+			return IMSCENE->spawn<Scene::Rectangle>(*holder, key);
+		},
+		"SpawnLabel", [](std::shared_ptr<Scene::Node> holder, std::optional<std::string> key) {
+			return IMSCENE->spawn<Scene::Label>(*holder, key);
+		},
+		"SpawnSprite", [](std::shared_ptr<Scene::Node> holder, std::optional<std::string> key) {
+			return IMSCENE->spawn<Scene::Sprite>(*holder, key);
+		},
+		"IsMouseHovered", [](std::shared_ptr<Scene::Node> node) {
+			return Shared::SceneHelpers::ImScene::IsMouseHovered(*node);
+		},
+		"Tooltip", [](std::shared_ptr<Scene::Node> holder, std::wstring text) {
+			Shared::SceneHelpers::ImScene::Tooltip(*holder, text);
+		}
 	);
 }
 
@@ -840,7 +868,7 @@ void App::onFrame()
 	ImGui::SetNextWindowPos({ 32.0f, getAbsoluteHeight() * 0.5f }, ImGuiCond_Once);
 	ImGui::Begin("Lua");
 	ImGui::Checkbox("Show lua funcs", &mShowLuaFuncs);
-	ImGui::SetWindowSize({ 512, 256 }, ImGuiCond_Once);
+	ImGui::SetWindowSize({ 512, 512 }, ImGuiCond_Once);
 
 	auto flags = ImGuiInputTextFlags_AllowTabInput;
 
