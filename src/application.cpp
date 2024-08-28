@@ -15,9 +15,29 @@ SOL_BASE_CLASSES(Scene::Node, Scene::Transform);
 SOL_BASE_CLASSES(Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color);
 SOL_BASE_CLASSES(Scene::Sprite, Scene::Node, Scene::Transform, Scene::Color);
 SOL_BASE_CLASSES(Scene::Label, Scene::Node, Scene::Transform, Scene::Color);
-SOL_DERIVED_CLASSES(Scene::Color, Scene::Rectangle, Scene::Sprite, Scene::Label);
-SOL_DERIVED_CLASSES(Scene::Node, Scene::Rectangle, Scene::Sprite, Scene::Label);
-SOL_DERIVED_CLASSES(Scene::Transform, Scene::Node, Scene::Rectangle, Scene::Sprite, Scene::Label);
+SOL_BASE_CLASSES(Shared::PhysHelpers::World, Scene::Node, Scene::Transform);
+SOL_BASE_CLASSES(Shared::PhysHelpers::Entity, Scene::Node, Scene::Transform);
+
+SOL_DERIVED_CLASSES(Scene::Color,
+	Scene::Rectangle,
+	Scene::Sprite,
+	Scene::Label
+);
+SOL_DERIVED_CLASSES(Scene::Node,
+	Scene::Rectangle,
+	Scene::Sprite,
+	Scene::Label,
+	Shared::PhysHelpers::World,
+	Shared::PhysHelpers::Entity
+);
+SOL_DERIVED_CLASSES(Scene::Transform,
+	Scene::Node,
+	Scene::Rectangle,
+	Scene::Sprite,
+	Scene::Label,
+	Shared::PhysHelpers::World,
+	Shared::PhysHelpers::Entity
+);
 
 static void SetUrl(const std::string& url)
 {
@@ -686,7 +706,7 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		});
 	};
 
-	auto rectangle = scene.new_usertype<Scene::Rectangle>("Rectangle",
+	scene.new_usertype<Scene::Rectangle>("Rectangle",
 		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
 		sol::call_constructor, sol::no_constructor,
 		"Create", [] {
@@ -708,7 +728,7 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		"BottomRightColor", createCornerProperty(Scene::Rectangle::Corner::BottomRight)
 	);
 
-	auto sprite = scene.new_usertype<Scene::Sprite>("Sprite",
+	scene.new_usertype<Scene::Sprite>("Sprite",
 		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
 		sol::call_constructor, sol::no_constructor,
 		"Create", [] {
@@ -717,7 +737,7 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		"Texture", sol::property(&Scene::Sprite::getTexture, sol::resolve<void(std::shared_ptr<skygfx::Texture>)>(&Scene::Sprite::setTexture))
 	);
 
-	auto label = scene.new_usertype<Scene::Label>("Label",
+	scene.new_usertype<Scene::Label>("Label",
 		sol::base_classes, sol::bases<Scene::Node, Scene::Transform, Scene::Color>(),
 		sol::call_constructor, sol::no_constructor,
 		"Create", [] {
@@ -733,6 +753,31 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		}),
 		"OutlineThickness", sol::property(&Scene::Label::getOutlineThickness, &Scene::Label::setOutlineThickness)
 	);
+
+	auto physics = lua.create_table_with(
+		"EntityType", createEnumTable.template operator()<Shared::PhysHelpers::Entity::Type>(),
+		"EntityShape", createEnumTable.template operator()<Shared::PhysHelpers::Entity::Shape>()
+	);
+
+	physics.new_usertype<Shared::PhysHelpers::World>("World",
+		sol::base_classes, sol::bases<Scene::Node, Scene::Transform>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<Shared::PhysHelpers::World>();
+		}
+	);
+
+	physics.new_usertype<Shared::PhysHelpers::Entity>("Entity",
+		sol::base_classes, sol::bases<Scene::Node, Scene::Transform>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<Shared::PhysHelpers::Entity>();
+		},
+		"Type", sol::property(&Shared::PhysHelpers::Entity::getType, &Shared::PhysHelpers::Entity::setType),
+		"Shape", sol::property(&Shared::PhysHelpers::Entity::getShape, &Shared::PhysHelpers::Entity::setShape)
+	);
+
+	scene["Physics"] = physics;
 
 	// imscene
 
