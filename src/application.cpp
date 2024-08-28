@@ -643,9 +643,6 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 
 	auto scene = lua.create_named_table("Scene");
 
-	scene["GetRoot"] = [canvas] {
-		return std::static_pointer_cast<Scene::Node>(canvas);
-	};
 	scene["Root"] = std::static_pointer_cast<Scene::Node>(canvas);
 
 	scene.new_usertype<Scene::Transform>("Transform",
