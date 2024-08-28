@@ -17,18 +17,24 @@ SOL_BASE_CLASSES(Scene::Sprite, Scene::Node, Scene::Transform, Scene::Color);
 SOL_BASE_CLASSES(Scene::Label, Scene::Node, Scene::Transform, Scene::Color);
 SOL_BASE_CLASSES(Shared::PhysHelpers::World, Scene::Node, Scene::Transform);
 SOL_BASE_CLASSES(Shared::PhysHelpers::Entity, Scene::Node, Scene::Transform);
+SOL_BASE_CLASSES(StandardButton, Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color);
 
+SOL_DERIVED_CLASSES(Scene::Rectangle,
+	StandardButton
+);
 SOL_DERIVED_CLASSES(Scene::Color,
 	Scene::Rectangle,
 	Scene::Sprite,
-	Scene::Label
+	Scene::Label,
+	StandardButton
 );
 SOL_DERIVED_CLASSES(Scene::Node,
 	Scene::Rectangle,
 	Scene::Sprite,
 	Scene::Label,
 	Shared::PhysHelpers::World,
-	Shared::PhysHelpers::Entity
+	Shared::PhysHelpers::Entity,
+	StandardButton
 );
 SOL_DERIVED_CLASSES(Scene::Transform,
 	Scene::Node,
@@ -36,7 +42,8 @@ SOL_DERIVED_CLASSES(Scene::Transform,
 	Scene::Sprite,
 	Scene::Label,
 	Shared::PhysHelpers::World,
-	Shared::PhysHelpers::Entity
+	Shared::PhysHelpers::Entity,
+	StandardButton
 );
 
 static void SetUrl(const std::string& url)
@@ -173,6 +180,11 @@ static int HandlePanic(lua_State* L)
 	sky::Log(Console::Color::Red, lua["debug"]["traceback"]());
 
 	return 0;
+}
+
+StandardButton::StandardButton()
+{
+	setRounding(0.5f);
 }
 
 Application::Application() : Shared::Application(PROJECT_NAME, { Flag::Scene })
@@ -368,7 +380,7 @@ void Application::drawShowcaseApps()
 			}));
 			title_holder->attach(title);
 
-			auto button = std::make_shared<Button>();
+			auto button = std::make_shared<StandardButton>();
 			button->setAnchor(1.0f);
 			button->setPivot(1.0f);
 			button->setPosition({ -24.0f, -24.0f });
@@ -378,7 +390,6 @@ void Application::drawShowcaseApps()
 				runApp(app.entry_point);
 				SetUrl(std::format("?+run {}", MakeFinalAppEntryPointUrl(app.entry_point)));
 			});
-			button->setRounding(0.5f);
 			rect->attach(button);
 		}
 	}
@@ -779,6 +790,19 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 
 	scene["Physics"] = physics;
 
+	scene.new_usertype<StandardButton>("StandardButton",
+		sol::base_classes, sol::bases<Scene::Rectangle, Scene::Node, Scene::Transform, Scene::Color>(),
+		sol::call_constructor, sol::no_constructor,
+		"Create", [] {
+			return std::make_shared<StandardButton>();
+		},
+		"OnClick", sol::property(&StandardButton::getClickCallback, &StandardButton::setClickCallback),
+		"Text", sol::property(
+			[](StandardButton& self) { return self.getLabel()->getText(); },
+			[](StandardButton& self, std::wstring text) { self.getLabel()->setText(text); }
+		)
+	);
+
 	// imscene
 
 	auto imscene = lua.create_named_table("ImScene",
@@ -817,14 +841,13 @@ App::App(std::string url_base) :
 	});
 	attach(mCanvas);
 
-	auto button = std::make_shared<Button>();
+	auto button = std::make_shared<StandardButton>();
 	button->setPosition({ 32.0f, 32.0f });
 	button->setSize({ 96.0f, 32.0f });
 	button->getLabel()->setText(L"EXIT");
 	button->setClickCallback([] {
 		CONSOLE->execute("exit");
 	});
-	button->setRounding(0.5f);
 	attach(button);
 }
 

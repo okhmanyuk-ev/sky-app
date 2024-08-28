@@ -12,7 +12,11 @@ namespace skyapp
 		std::string entry_point;
 	};
 
-	using Button = Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>;
+	class StandardButton : public Shared::SceneHelpers::BouncingButtonBehavior<Shared::SceneHelpers::RectangleButton>
+	{
+	public:
+		StandardButton();
+	};
 
 	class App : public Scene::Rectangle,
 		public std::enable_shared_from_this<App>,
