@@ -826,11 +826,6 @@ App::App(std::string url_base) :
 	});
 	button->setRounding(0.5f);
 	attach(button);
-
-	mSolState.open_libraries();
-	mSolState.set_panic(HandlePanic);
-
-	MakeApi(mSolState, mUrlBase, mCanvas);
 }
 
 static void DisplayTable(const sol::table& tbl, std::string prefix)
@@ -880,7 +875,10 @@ static void DisplayTable(const sol::table& tbl, std::string prefix)
 
 void App::drawCanvas()
 {
-	auto frame = mSolState["Frame"];
+	if (!mSolState)
+		return;
+
+	auto frame = (*mSolState)["Frame"];
 
 	if (frame.is<sol::function>())
 	{
@@ -922,8 +920,7 @@ void App::onFrame()
 	if (mShowLuaFuncs)
 	{
 		ImGui::Begin("Lua funcs", &mShowLuaFuncs);
-		sol::table globals = mSolState.globals();
-		DisplayTable(globals, "");
+		DisplayTable(mSolState->globals(), "");
 		ImGui::End();
 	}
 }
@@ -935,9 +932,17 @@ void App::setLuaCode(const std::string& lua)
 	if (lua.empty())
 		return;
 
+	mSolState.reset();
 	mCanvas->clear();
 	mCanvas->clearActions();
-	auto res = mSolState.do_string(lua, "entry-point");
+
+	mSolState = std::make_unique<sol::state>();
+	mSolState->open_libraries();
+	mSolState->set_panic(HandlePanic);
+
+	MakeApi(*mSolState, mUrlBase, mCanvas);
+
+	auto res = mSolState->do_string(lua, "entry-point");
 
 	if (!res.valid())
 	{

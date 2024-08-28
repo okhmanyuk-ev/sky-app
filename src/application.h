@@ -33,7 +33,7 @@ namespace skyapp
 
 	private:
 		std::string mUrlBase;
-		sol::state mSolState;
+		std::unique_ptr<sol::state> mSolState;
 		std::string mLuaCode;
 		std::shared_ptr<Canvas> mCanvas;
 		bool mShowLuaFuncs = false;
