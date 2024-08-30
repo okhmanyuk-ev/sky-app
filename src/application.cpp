@@ -851,6 +851,11 @@ App::App(std::string url_base) :
 	attach(button);
 }
 
+App::~App()
+{
+	mCanvas->clear();
+}
+
 static void DisplayTable(const sol::table& tbl, std::string prefix)
 {
 	for (const auto& pair : tbl)
@@ -955,9 +960,9 @@ void App::setLuaCode(const std::string& lua)
 	if (lua.empty())
 		return;
 
-	mSolState.reset();
 	mCanvas->clear();
 	mCanvas->clearActions();
+	mSolState.reset();
 
 	mSolState = std::make_unique<sol::state>();
 	mSolState->open_libraries();

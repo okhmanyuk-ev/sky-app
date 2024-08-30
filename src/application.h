@@ -27,6 +27,7 @@ namespace skyapp
 
 	public:
 		App(std::string url_base);
+		~App();
 
 	private:
 		void drawCanvas();
