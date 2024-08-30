@@ -800,7 +800,10 @@ static void MakeApi(sol::state& lua, std::string url_base, std::shared_ptr<Scene
 		"Text", sol::property(
 			[](StandardButton& self) { return self.getLabel()->getText(); },
 			[](StandardButton& self, std::wstring text) { self.getLabel()->setText(text); }
-		)
+		),
+		"Label", sol::property([](StandardButton& self) {
+			return std::static_pointer_cast<Scene::Label>(self.getLabel());
+		})
 	);
 
 	// imscene
@@ -853,7 +856,7 @@ App::App(std::string url_base) :
 
 App::~App()
 {
-	mCanvas->clear();
+	mCanvas->clear(); // we need clear childs of canvas before sol state cleared
 }
 
 static void DisplayTable(const sol::table& tbl, std::string prefix)
