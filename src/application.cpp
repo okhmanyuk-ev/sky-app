@@ -277,7 +277,7 @@ void Application::drawShowcaseApps()
 	auto scrollbox = IMSCENE->spawn<Scene::ClippableScissor<Scene::Scrollbox>>(*scroll_holder);
 	if (IMSCENE->isFirstCall())
 	{
-		scrollbox->getContent()->setAutoSizeHeightEnabled(true);
+		scrollbox->getContent()->setAutoHeightEnabled(true);
 		scrollbox->setStretch(1.0f);
 		scrollbox->getBounding()->setStretch(1.0f);
 		scrollbox->getContent()->setStretch({ 1.0f, 0.0f });
@@ -287,7 +287,7 @@ void Application::drawShowcaseApps()
 	if (IMSCENE->isFirstCall())
 	{
 		grid->setDirection(Scene::Grid::Direction::RightDown);
-		grid->setAutoSizeWidthEnabled(false);
+		grid->setAutoWidthEnabled(false);
 		grid->setAnchor(0.5f);
 		grid->setPivot(0.5f);
 		grid->setStretch({ 1.0f, 0.0f });
@@ -349,7 +349,7 @@ void Application::drawShowcaseApps()
 			}
 
 			auto title_holder = std::make_shared<Scene::ClippableScissor<Scene::AutoSized<Scene::Node>>>();
-			title_holder->setAutoSizeWidthEnabled(false);
+			title_holder->setAutoWidthEnabled(false);
 			title_holder->setPosition({ 0.0f, 24.0f });
 			title_holder->setStretch({ 1.0f, 0.0f });
 			title_holder->setSize({ -48.0f, 0.0f });
